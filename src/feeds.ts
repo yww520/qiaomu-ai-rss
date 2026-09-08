@@ -4,6 +4,7 @@ import { safeUrl, type Entry, type Subscription } from './model';
 export const MAX_SUBSCRIPTIONS = 100;
 const MAX_XML = 5 * 1024 * 1024;
 const MAX_STORED_FEED = 1024 * 1024;
+const MAX_ARTICLE_RAW = 500_000;
 export interface FeedInput { url: string; name: string; group: string }
 export function feedUrl(value: string): string {
   const safe = safeUrl(value.trim());
@@ -99,11 +100,11 @@ export async function parseFeed(xml: string, url: string, doc: Document): Promis
     if (ids.has(id)) continue; ids.add(id);
     const publishedTs = Date.parse(published);
     const contentBase = contentNode && hasXmlBase(contentNode) ? baseUrl(contentNode, url) : link || base;
-    const parsedContent = contentWithBase(raw.slice(0, 100_000), contentBase, doc);
+    const parsedContent = contentWithBase(raw.slice(0, MAX_ARTICLE_RAW), contentBase, doc);
     const entry: Entry = { id, sourceId, origin: 'local', sourceName: name, title, link: link || url, image: entryImage(item, parsedContent.image, contentBase),
       published, publishedTs: Number.isNaN(publishedTs) ? null : publishedTs,
       author: atom ? text(child(item, 'author') || root, 'name') : text(item, 'creator') || text(item, 'author'),
-      summary: plain(raw, doc).slice(0, 240), content: (parsedContent.html || '<p>订阅源没有提供正文，请打开原文阅读。</p>') + (raw.length > 100_000 ? '<p>正文较长，已缓存部分内容。请打开原文阅读全文。</p>' : '') };
+      summary: plain(raw, doc).slice(0, 240), content: (parsedContent.html || '<p>订阅源没有提供正文，请打开原文阅读。</p>') + (raw.length > MAX_ARTICLE_RAW ? '<p>正文较长，已缓存部分内容。请打开原文阅读全文。</p>' : '') };
     size += new TextEncoder().encode(JSON.stringify(entry)).byteLength;
     if (size > MAX_STORED_FEED) break;
     entries.push(entry);
