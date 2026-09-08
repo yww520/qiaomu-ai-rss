@@ -16,6 +16,7 @@ export async function stableId(value: string): Promise<string> {
 }
 function xmlDocument(value: string, doc: Document): Document {
   if (new TextEncoder().encode(value).byteLength > MAX_XML) throw new Error('文件超过 5 MB，请使用较小的订阅文件。');
+  if (/<html/i.test(value) || /<!DOCTYPE\s+html/i.test(value)) throw new Error('该地址返回的是网页而非 RSS/XML 订阅源（请确认是否缺少 .xml 后缀）。');
   if (/<!DOCTYPE|<!ENTITY/i.test(value)) throw new Error('不支持包含 DTD 或实体声明的订阅文件。');
   const win = doc.defaultView;
   if (!win) throw new Error('阅读窗口不可用。');

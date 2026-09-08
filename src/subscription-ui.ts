@@ -141,7 +141,7 @@ export class SubscriptionManager extends Modal {
           emptyDiv.createEl('p', { text: '提示：可先登录服务后台完成微信扫码授权，或点击下方按钮直接以标准 Feed 订阅：', attr: { style: 'font-size: 0.85em; color: var(--text-muted);' } });
           const forceBtn = emptyDiv.createEl('button', { text: `以此名称订阅并加入微信公众号分组`, cls: 'mod-cta' });
           forceBtn.onclick = async () => {
-            const feedUrl = `${settings.weMpServerUrl.replace(/\/$/, '')}/feed/${encodeURIComponent(kw)}`;
+            const feedUrl = `${settings.weMpServerUrl.replace(/\/$/, '')}/feed/${encodeURIComponent(kw)}.xml`;
             await this.plugin.subscriptions.add(feedUrl, '微信公众号', this.contentEl.ownerDocument);
             new Notice(`已添加公众号：${kw}`);
             this.body.empty();

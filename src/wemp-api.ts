@@ -182,7 +182,7 @@ export class WeMpClient {
           name: item.mp_name ?? '未命名公众号',
           avatar: item.mp_cover?.startsWith('http') ? item.mp_cover : `${this.baseUrl}${item.mp_cover ?? ''}`,
           description: item.mp_intro ?? '',
-          feedUrl: `${this.baseUrl}/feed/${item.id}`,
+          feedUrl: `${this.baseUrl}/feed/${item.id}.xml`,
           subscribed: true,
         }));
       }
@@ -209,7 +209,7 @@ export class WeMpClient {
           avatar: item.round_head_img ?? item.avatar ?? '',
           description: item.signature ?? item.description ?? '',
           fakeid: item.fakeid ?? '',
-          feedUrl: `${this.baseUrl}/feed/${item.id ?? item.fakeid ?? ''}`,
+          feedUrl: `${this.baseUrl}/feed/${item.id ?? item.fakeid ?? ''}.xml`,
           subscribed: false,
         }));
       }
@@ -240,11 +240,12 @@ export class WeMpClient {
       if (res.status >= 200 && res.status < 300) {
         const json = res.json as ApiResponse<{ id?: string }> | undefined;
         const feedId = json?.data?.id ?? account.id;
-        return { ok: true, feedUrl: `${this.baseUrl}/feed/${feedId}`, message: '订阅成功' };
+        return { ok: true, feedUrl: `${this.baseUrl}/feed/${feedId}.xml`, message: '订阅成功' };
       }
-      return { ok: true, feedUrl: `${this.baseUrl}/feed/${account.id}`, message: '已提交订阅' };
+      return { ok: true, feedUrl: `${this.baseUrl}/feed/${account.id}.xml`, message: '已提交订阅' };
     } catch {
-      return { ok: true, feedUrl: `${this.baseUrl}/feed/${account.id}`, message: '添加订阅源' };
+      return { ok: true, feedUrl: `${this.baseUrl}/feed/${account.id}.xml`, message: '添加订阅源' };
     }
   }
 }
+
