@@ -383,7 +383,13 @@ export class ReaderView extends ItemView {
       (this.filter !== 'unread' || !state.readIds.includes(entry.id) || this.unreadSession.has(entry.id) || entry.id === this.bundle?.entry.id) &&
       (!query || `${titleOf(entry)} ${entry.title} ${entry.summary || ''} ${this.sourceName(entry)}`.toLocaleLowerCase().includes(query)));
   }
-  private sourceName(entry: Entry) { return this.plugin.state.subscriptions.find(feed => feed.id === entry.sourceId)?.name || entry.sourceName || this.plugin.state.sources.find(source => source.id === entry.sourceId)?.name || entry.sourceId; }
+  private sourceName(entry: Entry) {
+    const feed = this.plugin.state.subscriptions.find(f => f.id === entry.sourceId);
+    if (feed && (feed.url.includes('FEATURED_ARTICLES') || feed.url.includes('/all.xml'))) {
+      return entry.author || feed.name;
+    }
+    return feed?.name || entry.author || entry.sourceName || this.plugin.state.sources.find(source => source.id === entry.sourceId)?.name || entry.sourceId;
+  }
   private excerpt(entry: Entry): string {
     if (entry.summaryZh) return entry.summaryZh;
     const text = entry.rewrite?.body.split('\n\n').find(line => /[\u3400-\u9fff]/.test(line) && !line.startsWith('#') && !line.startsWith('!['));

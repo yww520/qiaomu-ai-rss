@@ -263,7 +263,7 @@ export class WeMpClient {
     }
   }
 
-  async importArticle(articleUrl: string): Promise<{ ok: boolean; message: string; feedUrl: string }> {
+  async importArticle(articleUrl: string): Promise<{ ok: boolean; message: string; feedUrl: string; title?: string }> {
     try {
       const headers = await this.getHeaders();
       const url = `${this.baseUrl}/api/v1/wx/mps/featured/article`;
@@ -274,14 +274,55 @@ export class WeMpClient {
         body: JSON.stringify({ url: articleUrl.trim() }),
         throw: false,
       });
-      if (res.status >= 200 && res.status < 300) {
-        return {
-          ok: true,
-          message: '文章已开始抓取并加入精选文章源',
-          feedUrl: `${this.baseUrl}/feed/MP_WXS_FEATURED_ARTICLES.xml`,
-        };
+      if (res.status < 200 || res.status >= 300) {
+        return { ok: false, message: `提交抓取任务失败 (HTTP ${res.status})`, feedUrl: '' };
       }
-      return { ok: false, message: `导入文章失败 (HTTP ${res.status})`, feedUrl: '' };
+      const json = res.json as ApiResponse<{ task_id?: string }>;
+      const taskId = json?.data?.task_id;
+      const feedUrl = `${this.baseUrl}/feed/MP_WXS_FEATURED_ARTICLES.xml`;
+      if (!taskId) {
+        return { ok: true, message: '文章已加入抓取队列', feedUrl };
+      }
+
+      // Poll task status until complete or timeout (up to 30s)
+      const start = Date.now();
+      while (Date.now() - start < 30000) {
+        await new Promise((r) => window.setTimeout(r, 1500));
+        try {
+          const pollRes = await requestUrl({
+            url: `${this.baseUrl}/api/v1/wx/mps/featured/article/tasks/${taskId}`,
+            method: 'GET',
+            headers,
+            throw: false,
+          });
+          if (pollRes.status === 200) {
+            const taskData = (pollRes.json as ApiResponse<{ status?: string; message?: string; title?: string }>)?.data;
+            if (taskData?.status === 'success') {
+              return {
+                ok: true,
+                message: '文章抓取成功',
+                feedUrl,
+                title: taskData.title,
+              };
+            }
+            if (taskData?.status === 'failed') {
+              return {
+                ok: false,
+                message: taskData.message || '文章抓取失败',
+                feedUrl,
+              };
+            }
+          }
+        } catch {
+          // ignore transient poll error
+        }
+      }
+
+      return {
+        ok: true,
+        message: '任务在后台执行中，请稍后刷新查看',
+        feedUrl,
+      };
     } catch (e) {
       return { ok: false, message: e instanceof Error ? e.message : String(e), feedUrl: '' };
     }

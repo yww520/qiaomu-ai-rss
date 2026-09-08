@@ -538,8 +538,21 @@ export class ImportWechatArticleModal extends Modal {
       try {
         const res = await this.client.importArticle(url);
         if (res.ok && res.feedUrl) {
-          await this.plugin.subscriptions.add(res.feedUrl, '微信公众号', this.contentEl.ownerDocument);
-          new Notice('文章已成功抓取并加入微信公众号订阅！');
+          const existing = this.plugin.state.subscriptions.find(s => s.url === res.feedUrl);
+          let targetFeedId = '';
+          if (existing) {
+            await this.plugin.subscriptions.refresh([existing.id], this.contentEl.ownerDocument, true);
+            targetFeedId = existing.id;
+          } else {
+            const newFeed = await this.plugin.subscriptions.add(res.feedUrl, '微信公众号', this.contentEl.ownerDocument);
+            targetFeedId = newFeed.id;
+          }
+          if (targetFeedId) {
+            this.plugin.state.settings.lastSource = targetFeedId;
+            await this.plugin.persist();
+            this.plugin.resetViews();
+          }
+          new Notice(res.title ? `🎉「${res.title}」已加入阅读器！` : '文章已成功抓取并更新！');
           this.close();
           this.onSuccess();
         } else {
