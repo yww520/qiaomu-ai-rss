@@ -251,6 +251,61 @@ export default class QiaomuRssPlugin extends Plugin {
     const view = this.app.workspace.getLeavesOfType(VIEW_TYPE)[0]?.view;
     if (view instanceof ReaderView) view.showSubscriptions();
   }
+  async exportArticleNotes(entry: Entry, highlights: import('./model').Highlight[]): Promise<TFile> {
+    const folder = folderPath(this.state.settings.folder);
+    await this.ensureFolder(`${folder}/notes/dummy.md`);
+    const sanitizedTitle = (entry.titleZh || entry.title).replace(/[\\/:*?"<>|]/g, '_').slice(0, 80);
+    const filename = `${sanitizedTitle} - 读书笔记.md`;
+    const fullPath = `${folder}/notes/${filename}`;
+
+    const dateStr = new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' });
+    const timeStr = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+
+    let md = `---
+title: "${(entry.titleZh || entry.title).replace(/"/g, '\\"')}"
+source: "${(entry.sourceName || '').replace(/"/g, '\\"')}"
+link: "${entry.link || ''}"
+date: "${dateStr} ${timeStr}"
+type: 读书笔记
+tags:
+  - 读书笔记
+  - 乔木RSS
+---
+
+# ${entry.titleZh || entry.title}
+
+> **来源**：${entry.sourceName || 'RSS'}  
+> **原文链接**：[阅读原文](${entry.link || '#'})  
+> **导出时间**：${dateStr} ${timeStr}  
+> **划线与笔记数**：${highlights.length} 条
+
+---
+
+## 划线与批注
+
+`;
+
+    for (let i = 0; i < highlights.length; i++) {
+      const hl = highlights[i];
+      const styleLabel = hl.style === 'underline' ? '划线' : hl.style === 'bold' ? '重点' : '高亮';
+      const time = hl.createdAt ? new Date(hl.createdAt).toLocaleDateString('zh-CN') : dateStr;
+
+      md += `### ${i + 1}. [${styleLabel}] (${time})\n\n`;
+      md += `> ${hl.text.replace(/\n+/g, '\n> ')}\n\n`;
+      if (hl.note && hl.note.trim()) {
+        md += `💭 **我的想法**：\n\n${hl.note.trim()}\n\n`;
+      }
+      md += `---\n\n`;
+    }
+
+    let existing = this.app.vault.getAbstractFileByPath(fullPath);
+    if (existing instanceof TFile) {
+      await this.app.vault.modify(existing, md);
+      return existing;
+    } else {
+      return await this.app.vault.create(fullPath, md);
+    }
+  }
   async saveOpml(content: string): Promise<string> {
     const folder = folderPath(this.state.settings.folder); let current = '';
     for (const segment of folder.split('/')) {

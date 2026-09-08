@@ -7,7 +7,8 @@ import { enableImageDrag, prepareMarkdownImageDrags } from './image-drag';
 import { SelectionCapture } from './selection';
 import { readingFonts, selectableFonts, fontFamily } from './fonts';
 import { articleFragment } from './content';
-import { modeLabels, modeSchema, readingFontSchema, safeUrl, titleOf, type ChannelState, type Bundle, type Entry, type Mode } from './model';
+import { modeLabels, modeSchema, readingFontSchema, safeUrl, titleOf, type ChannelState, type Bundle, type Entry, type Mode, type Highlight, type HighlightStyle } from './model';
+import { createHighlightId, wrapRangeWithHighlight, restoreHighlightsInContainer, removeHighlightFromContainer, updateHighlightInContainer, HighlightCard } from './highlights';
 export const VIEW_TYPE = 'qiaomu-ai-rss-reader';
 type Filter = 'all' | 'unread' | 'favorites';
 function feedHost(url: string) { try { return new URL(url).hostname; } catch { return 'RSS'; } }
@@ -85,6 +86,91 @@ export class ReaderView extends ItemView {
   private thumbnailPending = new Map<string, Promise<string | null>>();
   private thumbnailVersion = 0;
   private imageObserver?: IntersectionObserver;
+  private activeHighlightCard?: HighlightCard;
+
+  getHighlights(): Highlight[] {
+    if (!this.bundle) return [];
+    return this.plugin.state.highlights[this.bundle.entry.id] || [];
+  }
+
+  async addHighlight(range: Range, text: string, style: HighlightStyle, note = ''): Promise<void> {
+    if (!this.bundle) return;
+    const entryId = this.bundle.entry.id;
+    const id = createHighlightId();
+    const hl: Highlight = {
+      id,
+      entryId,
+      text,
+      style,
+      note,
+      createdAt: Date.now(),
+    };
+
+    // 1. Wrap visually
+    const marks = wrapRangeWithHighlight(this.contentEl.ownerDocument, range, hl);
+    if (!marks.length) return;
+
+    // 2. Persist
+    const list = this.plugin.state.highlights[entryId] || [];
+    this.plugin.state.highlights[entryId] = [...list, hl];
+    await this.plugin.persist();
+
+    // 3. Clear window selection
+    this.contentEl.ownerDocument.getSelection()?.removeAllRanges();
+
+    // 4. Update highlights count badge on toolbar if exists
+    this.updateNotesBadge();
+
+    // If note is empty and created via "写想法", pop up the card immediately
+    if (note === '__OPEN_CARD__') {
+      hl.note = '';
+      this.openHighlightCard(marks[0], hl);
+    }
+  }
+
+  async updateHighlight(updated: Highlight): Promise<void> {
+    if (!this.bundle) return;
+    const entryId = this.bundle.entry.id;
+    const list = this.plugin.state.highlights[entryId] || [];
+    this.plugin.state.highlights[entryId] = list.map(h => (h.id === updated.id ? updated : h));
+    await this.plugin.persist();
+
+    const prose = this.reader.querySelector('.qrs-prose') as HTMLElement;
+    if (prose) updateHighlightInContainer(prose, updated);
+  }
+
+  async deleteHighlight(id: string): Promise<void> {
+    if (!this.bundle) return;
+    const entryId = this.bundle.entry.id;
+    const list = this.plugin.state.highlights[entryId] || [];
+    this.plugin.state.highlights[entryId] = list.filter(h => h.id !== id);
+    await this.plugin.persist();
+
+    const prose = this.reader.querySelector('.qrs-prose') as HTMLElement;
+    if (prose) removeHighlightFromContainer(prose, id);
+    this.updateNotesBadge();
+  }
+
+  openHighlightCard(anchor: HTMLElement, highlight: Highlight): void {
+    this.activeHighlightCard?.close();
+    this.activeHighlightCard = new HighlightCard({
+      anchor,
+      highlight,
+      doc: this.contentEl.ownerDocument,
+      onUpdate: async (up) => { await this.updateHighlight(up); },
+      onDelete: async (id) => { await this.deleteHighlight(id); },
+      onClose: () => { this.activeHighlightCard = undefined; },
+    });
+  }
+
+  private updateNotesBadge() {
+    const badge = this.reader.querySelector('.qrs-notes-badge');
+    const count = this.getHighlights().length;
+    if (badge) {
+      badge.setText(count > 0 ? String(count) : '');
+      badge.parentElement?.toggleClass('has-notes', count > 0);
+    }
+  }
   constructor(leaf: WorkspaceLeaf, private plugin: QiaomuRssPlugin) {
     super(leaf); this.mode = plugin.state.settings.defaultMode;
   }
@@ -136,8 +222,41 @@ export class ReaderView extends ItemView {
         } catch (error) { new Notice(error instanceof Error ? error.message : '摘录失败，请重试。'); }
       };
       return [
-        { label: '追加到今日日记', icon: 'calendar-plus', save: text => capture(text, false) },
-        { label: note ? `追加到当前笔记：${note.basename}` : '追加到当前笔记（请先打开笔记）', icon: 'file-pen-line', disabled: !note, save: text => capture(text, true) },
+        {
+          label: '高亮',
+          icon: 'highlighter',
+          className: 'qrs-btn-hl',
+          save: ctx => this.addHighlight(ctx.range, ctx.text, 'highlight'),
+        },
+        {
+          label: '划线',
+          icon: 'underline',
+          className: 'qrs-btn-underline',
+          save: ctx => this.addHighlight(ctx.range, ctx.text, 'underline'),
+        },
+        {
+          label: '重点加粗',
+          icon: 'bold',
+          className: 'qrs-btn-bold',
+          save: ctx => this.addHighlight(ctx.range, ctx.text, 'bold'),
+        },
+        {
+          label: '写想法 / 批注',
+          icon: 'message-square-plus',
+          className: 'qrs-btn-note',
+          save: ctx => this.addHighlight(ctx.range, ctx.text, 'highlight', '__OPEN_CARD__'),
+        },
+        {
+          label: '追加到今日日记',
+          icon: 'calendar-plus',
+          save: ctx => capture(ctx.text, false),
+        },
+        {
+          label: note ? `追加到当前笔记：${note.basename}` : '追加到当前笔记（请先打开笔记）',
+          icon: 'file-pen-line',
+          disabled: !note,
+          save: ctx => capture(ctx.text, true),
+        },
       ];
     });
     return Promise.resolve();
@@ -592,6 +711,54 @@ export class ReaderView extends ItemView {
     }));
     readButton.setAttribute('aria-pressed', String(read));
     this.addIconButton(actions, 'notebook-pen', '记到今日日记', () => this.noteCurrent());
+
+    // Reading Notes & Export
+    const notesCount = this.getHighlights().length;
+    const notesBtn = actions.createEl('button', {
+      cls: `qrs-icon qrs-notes-toolbar-btn${notesCount > 0 ? ' has-notes' : ''}`,
+      attr: { 'data-qrs-label': '阅读笔记与导出' },
+    });
+    setIcon(notesBtn, 'highlighter');
+    notesBtn.createSpan({ cls: 'qrs-visually-hidden', text: '阅读笔记与导出' });
+    notesBtn.createSpan({ cls: 'qrs-notes-badge', text: notesCount > 0 ? String(notesCount) : '' });
+    notesBtn.onclick = (e) => {
+      const highlights = this.getHighlights();
+      const menu = new Menu();
+      if (highlights.length > 0) {
+        menu.addItem(item => {
+          item.setTitle(`导出 ${highlights.length} 条笔记到 Markdown`)
+            .setIcon('file-output')
+            .onClick(async () => {
+              try {
+                const file = await this.plugin.exportArticleNotes(bundle.entry, highlights);
+                new Notice(`读书笔记已导出至：${file.path}`);
+                await this.app.workspace.getLeaf(false).openFile(file);
+              } catch (err) {
+                new Notice(err instanceof Error ? err.message : '导出笔记失败');
+              }
+            });
+        });
+        menu.addItem(item => {
+          item.setTitle('清空本篇所有划线与笔记')
+            .setIcon('trash-2')
+            .onClick(async () => {
+              delete this.plugin.state.highlights[bundle.entry.id];
+              await this.plugin.persist();
+              this.renderReader(false);
+              new Notice('已清空本篇笔记。');
+            });
+        });
+      } else {
+        menu.addItem(item => {
+          item.setTitle('暂无划线或笔记（选中文本可划线）')
+            .setIcon('info')
+            .setDisabled(true);
+        });
+      }
+      const rect = notesBtn.getBoundingClientRect();
+      menu.showAtPosition({ x: rect.left, y: rect.bottom });
+    };
+
     const more = this.addIconButton(actions, 'ellipsis', '更多文章操作', () => {
       const menu = new Menu(); const link = safeUrl(bundle.entry.link || '');
       if (bundle.entry.origin === 'vault' && bundle.entry.markdownPath) menu.addItem(item => item.setTitle('打开源文件').setIcon('file-text').onClick(() => {
@@ -612,15 +779,43 @@ export class ReaderView extends ItemView {
         const prose = article.createDiv('qrs-prose');
         this.markdownComponent = new Component(); this.markdownComponent.load();
         void MarkdownRenderer.render(this.app, bundle.entry.markdown, prose, bundle.entry.markdownPath || '', this.markdownComponent)
-          .then(() => prepareMarkdownImageDrags(this.app, this.plugin.images, prose, bundle.entry.markdownPath || ''))
+          .then(async () => {
+            await prepareMarkdownImageDrags(this.app, this.plugin.images, prose, bundle.entry.markdownPath || '');
+            this.setupHighlightsInProse(prose);
+          })
           .catch(() => { prose.setText('Markdown 无法显示，请打开源文件。'); });
       } else {
-      const fragment = articleFragment(bundle, this.mode, article.ownerDocument, this.plugin.state.settings.remoteImages);
-      if (fragment) { this.prepareImages(fragment); article.createDiv('qrs-prose').append(fragment); }
-      else article.createDiv({ cls: 'qrs-empty', text: this.articleLoading ? '正在获取正文…' : `${modeLabels[this.mode]}暂无正文。可以切换版本，或从“更多”中打开原文。` });
+        const fragment = articleFragment(bundle, this.mode, article.ownerDocument, this.plugin.state.settings.remoteImages);
+        if (fragment) {
+          this.prepareImages(fragment);
+          const prose = article.createDiv('qrs-prose');
+          prose.append(fragment);
+          this.setupHighlightsInProse(prose);
+        } else {
+          article.createDiv({ cls: 'qrs-empty', text: this.articleLoading ? '正在获取正文…' : `${modeLabels[this.mode]}暂无正文。可以切换版本，或从“更多”中打开原文。` });
+        }
       }
     } catch { article.createDiv({ cls: 'qrs-empty', text: '正文无法显示，请打开原文阅读。' }); }
     this.reader.scrollTop = scroll; this.restoreOffsets();
+  }
+
+  private setupHighlightsInProse(prose: HTMLElement) {
+    const highlights = this.getHighlights();
+    restoreHighlightsInContainer(prose, highlights);
+
+    // Event delegation on mark click
+    prose.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
+      const mark = target.closest('mark.qrs-hl') as HTMLElement;
+      if (!mark) return;
+      const hlId = mark.dataset.hlId;
+      if (!hlId) return;
+      const hl = this.getHighlights().find(h => h.id === hlId);
+      if (hl) {
+        e.stopPropagation();
+        this.openHighlightCard(mark, hl);
+      }
+    });
   }
   private renderAppearanceSettings(anchor: HTMLElement) {
     const settings = this.plugin.state.settings;

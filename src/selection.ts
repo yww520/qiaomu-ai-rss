@@ -1,6 +1,17 @@
 import { setIcon, setTooltip } from 'obsidian';
 import { markdownText } from './daily-note';
-export interface CaptureAction { label: string; icon: string; disabled?: boolean; save: (text: string) => Promise<void> }
+export interface CaptureContext {
+  text: string;
+  range: Range;
+  selection: Selection;
+}
+export interface CaptureAction {
+  label: string;
+  icon: string;
+  disabled?: boolean;
+  className?: string;
+  save: (context: CaptureContext) => Promise<void> | void;
+}
 /** A selection action, shown only after an explicit text selection. */
 export class SelectionCapture {
   private popup?: HTMLElement;
@@ -43,15 +54,23 @@ export class SelectionCapture {
     if (!selection?.rangeCount || selection.isCollapsed || !prose?.contains(selection.anchorNode) || !prose.contains(selection.focusNode)) return;
     const text = selection.toString().trim(); const save = this.capture();
     if (!text || !save) return;
-    const rect = selection.getRangeAt(0).getBoundingClientRect();
+    const range = selection.getRangeAt(0);
+    const rect = range.getBoundingClientRect();
     const viewport = this.doc.documentElement;
     const popup = this.doc.body.createDiv({ cls: 'qrs-selection-popup' }); this.popup = popup;
     for (const action of save) {
-      const button = popup.createEl('button', { attr: { 'aria-label': action.label } });
+      const button = popup.createEl('button', {
+        cls: action.className || '',
+        attr: { 'aria-label': action.label }
+      });
       setIcon(button, action.icon); setTooltip(button, action.label);
       button.disabled = !!action.disabled;
       button.onpointerdown = event => event.preventDefault();
-      button.onclick = () => { this.clear(); void action.save(text); };
+      button.onclick = () => {
+        const clonedRange = range.cloneRange();
+        this.clear();
+        void action.save({ text, range: clonedRange, selection });
+      };
     }
     popup.setCssProps({ '--qrs-popup-x': `${Math.max(8, Math.min(rect.left + rect.width / 2 - popup.offsetWidth / 2, viewport.clientWidth - popup.offsetWidth - 8))}px`,
       '--qrs-popup-y': `${Math.max(8, Math.min(rect.bottom + 8, viewport.clientHeight - popup.offsetHeight - 8))}px` });

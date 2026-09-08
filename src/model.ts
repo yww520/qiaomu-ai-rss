@@ -36,6 +36,20 @@ export const channelStateSchema = z.object({
   articlePending: z.boolean(),
 });
 export type ChannelState = z.infer<typeof channelStateSchema>;
+export const highlightStyleSchema = z.enum(['highlight', 'underline', 'bold']);
+export type HighlightStyle = z.infer<typeof highlightStyleSchema>;
+
+export const highlightSchema = z.object({
+  id: z.string(),
+  entryId: z.string(),
+  text: z.string(),
+  style: highlightStyleSchema.default('highlight'),
+  note: z.string().default(''),
+  createdAt: z.number().default(0),
+  color: z.string().optional(),
+});
+export type Highlight = z.infer<typeof highlightSchema>;
+
 export const stateSchema = z.object({
   settings: z.object({
     baseUrl: z.string().default('https://rss.qiaomu.ai'), folder: z.string().default('Qiaomu RSS'),
@@ -54,6 +68,7 @@ export const stateSchema = z.object({
   subscriptions: z.array(subscriptionSchema).default([]),
   channelStates: z.record(z.string(), channelStateSchema).catch({}).default({}),
   savedArticles: z.record(z.string(), bundleSchema).default({}),
+  highlights: z.record(z.string(), z.array(highlightSchema)).catch({}).default({}),
   cache: z.record(z.string(), bundleSchema).default({}), updatedAt: z.number().default(0),
 });
 export type State = z.infer<typeof stateSchema>;
