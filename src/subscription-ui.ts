@@ -303,27 +303,70 @@ class OpmlImport extends Modal {
 
 export class WeChatQrAuthModal extends Modal {
   private timer?: number;
+  private isClosed = false;
+
   constructor(private plugin: QiaomuRssPlugin, private client: WeMpClient, private onSuccess: () => void) {
     super(plugin.app);
   }
+
   async onOpen() {
+    this.isClosed = false;
+    if (this.timer) {
+      window.clearInterval(this.timer);
+      this.timer = undefined;
+    }
+
     this.setTitle('微信扫码授权');
     const content = this.contentEl;
     content.empty();
     content.addClass('qrs-subscription-modal');
 
     const desc = content.createEl('p', {
-      text: '正在启动云端会话并生成二维码（约需 5~10 秒）…',
+      text: '正在检查微信登录状态…',
       attr: { style: 'text-align: center; color: var(--text-muted); margin-bottom: 12px;' },
     });
     const imgContainer = content.createDiv({
       attr: { style: 'display: flex; justify-content: center; align-items: center; min-height: 220px;' },
     });
+    imgContainer.createSpan({ text: '⏳ 正在连接服务…', attr: { style: 'color: var(--text-muted); font-size: 0.9em;' } });
+
+    // Check if already logged in
+    const currentStatus = await this.client.checkQrStatus();
+    if (this.isClosed) return;
+
+    if (currentStatus.loginStatus) {
+      desc.setText('微信已处于授权登录状态，云端服务可正常抓取公众号文章！');
+      imgContainer.empty();
+      const card = imgContainer.createDiv({
+        attr: { style: 'display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; background: var(--background-secondary); border-radius: 8px; width: 100%; max-width: 280px;' },
+      });
+      card.createDiv({ text: '✅', attr: { style: 'font-size: 40px; margin-bottom: 8px;' } });
+      card.createDiv({ text: '微信已成功授权', attr: { style: 'font-weight: 600; font-size: 1.1em;' } });
+      card.createDiv({ text: '无需重复扫码，可直接搜索订阅公众号', attr: { style: 'font-size: 0.85em; color: var(--text-muted); margin-top: 4px;' } });
+
+
+      const btnRow = content.createDiv({ attr: { style: 'text-align: center; margin-top: 16px; display: flex; gap: 8px; justify-content: center;' } });
+      const doneBtn = btnRow.createEl('button', { text: '确定', cls: 'mod-cta' });
+      doneBtn.onclick = () => this.close();
+      const reLoginBtn = btnRow.createEl('button', { text: '重新扫码绑定' });
+      reLoginBtn.onclick = () => void this.loadQrFlow(content, desc, imgContainer);
+      return;
+    }
+
+    await this.loadQrFlow(content, desc, imgContainer);
+  }
+
+  private async loadQrFlow(content: HTMLElement, desc: HTMLElement, imgContainer: HTMLElement) {
+    if (this.isClosed) return;
+    desc.setText('正在启动云端会话并生成二维码（约需 5~10 秒）…');
+    imgContainer.empty();
     imgContainer.createSpan({ text: '⏳ 正在准备二维码…', attr: { style: 'color: var(--text-muted); font-size: 0.9em;' } });
 
     const qrRes = await this.client.getQrCode((msg) => {
-      desc.setText(msg);
+      if (!this.isClosed) desc.setText(msg);
     });
+
+    if (this.isClosed) return;
 
     if (!qrRes.ok || !qrRes.qrImageUrl) {
       imgContainer.empty();
@@ -353,19 +396,33 @@ export class WeChatQrAuthModal extends Modal {
 
     const btnRow = content.createDiv({ attr: { style: 'text-align: center; margin-top: 12px; display: flex; gap: 8px; justify-content: center;' } });
     const refreshBtn = btnRow.createEl('button', { text: '刷新二维码' });
-    refreshBtn.onclick = () => void this.onOpen();
+    refreshBtn.onclick = () => void this.loadQrFlow(content, desc, imgContainer);
 
     const webBtn = btnRow.createEl('button', { text: '在浏览器后台扫码' });
     webBtn.onclick = () => window.open(this.client.baseUrl, '_blank');
 
-    // Poll status every 2 seconds
-    if (this.timer) window.clearInterval(this.timer);
+    // Safe status polling
+    if (this.timer) {
+      window.clearInterval(this.timer);
+      this.timer = undefined;
+    }
     this.timer = window.setInterval(() => {
-      void (async () => {
-        const status = await this.client.checkQrStatus();
-        if (status.loginStatus) {
-          if (this.timer) window.clearInterval(this.timer);
+      if (this.isClosed) {
+        if (this.timer) {
+          window.clearInterval(this.timer);
           this.timer = undefined;
+        }
+        return;
+      }
+      void (async () => {
+        if (this.isClosed) return;
+        const status = await this.client.checkQrStatus();
+        if (status.loginStatus && !this.isClosed) {
+          this.isClosed = true;
+          if (this.timer) {
+            window.clearInterval(this.timer);
+            this.timer = undefined;
+          }
           new Notice('🎉 微信扫码授权成功！');
           this.close();
           this.onSuccess();
@@ -375,6 +432,7 @@ export class WeChatQrAuthModal extends Modal {
   }
 
   onClose() {
+    this.isClosed = true;
     if (this.timer) {
       window.clearInterval(this.timer);
       this.timer = undefined;
@@ -382,5 +440,6 @@ export class WeChatQrAuthModal extends Modal {
     this.contentEl.empty();
   }
 }
+
 
 
