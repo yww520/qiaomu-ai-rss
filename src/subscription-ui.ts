@@ -266,6 +266,23 @@ export class SubscriptionManager extends Modal {
       info.createDiv({ cls: 'qrs-subscription-name', text: feed.name });
       info.createDiv({ cls: 'qrs-subscription-detail', text: `${feed.group || '未分组'} · ${new URL(feed.url).hostname} · ${feed.entries.length} 篇` });
       if (feed.error) info.createDiv({ cls: 'qrs-subscription-error', text: feed.error });
+      const sync = row.createEl('button', { cls: 'qrs-subscription-icon', attr: { 'data-qrs-label': `刷新 ${feed.name}` } });
+      setIcon(sync, 'refresh-cw'); sync.createSpan({ cls: 'qrs-visually-hidden', text: `刷新 ${feed.name}` });
+      sync.onclick = async () => {
+        sync.disabled = true;
+        const match = feed.url.match(/\/feed\/([^/.]+)\.xml/);
+        if (match && match[1] && !match[1].startsWith('all')) {
+          new Notice(`正在触发云端抓取「${feed.name}」…`);
+          const client = new WeMpClient(() => this.plugin.state.settings.weMpServerUrl, () => this.plugin.state.settings.weMpToken);
+          void client.updateMpArticles(match[1]);
+        }
+        await this.plugin.subscriptions.refresh([feed.id], this.contentEl.ownerDocument, true);
+        const updatedCount = this.plugin.state.subscriptions.find(s => s.id === feed.id)?.entries.length || 0;
+        new Notice(`「${feed.name}」已刷新，当前共 ${updatedCount} 篇文章`);
+        this.renderList();
+        this.changed();
+      };
+
       const edit = row.createEl('button', { cls: 'qrs-subscription-icon', attr: { 'data-qrs-label': `编辑 ${feed.name}` } });
       setIcon(edit, 'pencil'); edit.createSpan({ cls: 'qrs-visually-hidden', text: `编辑 ${feed.name}` });
       edit.onclick = () => new EditSubscription(this.plugin, feed, () => { this.renderList(); this.changed(); }).open();
