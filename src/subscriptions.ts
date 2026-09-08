@@ -66,6 +66,11 @@ export class Subscriptions {
         const parsed = await this.fetch(feed.url, doc);
         if (!this.state().subscriptions.includes(feed)) return;
         feed.entries = parsed.entries; feed.updatedAt = Date.now(); feed.error = '';
+        for (const entry of parsed.entries) {
+          if (this.state().cache[entry.id]) {
+            this.state().cache[entry.id].entry = entry;
+          }
+        }
       } catch (error) {
         if (!this.state().subscriptions.includes(feed)) return;
         feed.error = error instanceof Error ? error.message : '订阅源无法读取。';
