@@ -313,28 +313,36 @@ export class WeChatQrAuthModal extends Modal {
     content.addClass('qrs-subscription-modal');
 
     const desc = content.createEl('p', {
-      text: '正在连接云端获取微信登录二维码…',
+      text: '正在启动云端会话并生成二维码（约需 5~10 秒）…',
       attr: { style: 'text-align: center; color: var(--text-muted); margin-bottom: 12px;' },
     });
     const imgContainer = content.createDiv({
       attr: { style: 'display: flex; justify-content: center; align-items: center; min-height: 220px;' },
     });
+    imgContainer.createSpan({ text: '⏳ 正在准备二维码…', attr: { style: 'color: var(--text-muted); font-size: 0.9em;' } });
 
-    const qrRes = await this.client.getQrCode();
+    const qrRes = await this.client.getQrCode((msg) => {
+      desc.setText(msg);
+    });
+
     if (!qrRes.ok || !qrRes.qrImageUrl) {
+      imgContainer.empty();
       desc.setText(`获取二维码失败: ${qrRes.message}`);
-      const btnRow = content.createDiv({ attr: { style: 'text-align: center; margin-top: 12px;' } });
+      const btnRow = content.createDiv({ attr: { style: 'text-align: center; margin-top: 14px; display: flex; gap: 8px; justify-content: center;' } });
       const retryBtn = btnRow.createEl('button', { text: '重试', cls: 'mod-cta' });
       retryBtn.onclick = () => void this.onOpen();
+      const webBtn = btnRow.createEl('button', { text: '在浏览器后台扫码' });
+      webBtn.onclick = () => window.open(this.client.baseUrl, '_blank');
       return;
     }
 
+    imgContainer.empty();
     desc.setText('请使用手机微信扫一扫下方二维码，并在手机上确认登录：');
     imgContainer.createEl('img', {
       attr: {
         src: qrRes.qrImageUrl,
         alt: '微信扫码授权',
-        style: 'width: 220px; height: 220px; border-radius: 8px; border: 1px solid var(--background-modifier-border); background: #fff;',
+        style: 'width: 220px; height: 220px; border-radius: 8px; border: 1px solid var(--background-modifier-border); background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.08); object-fit: contain;',
       },
     });
 
@@ -343,11 +351,15 @@ export class WeChatQrAuthModal extends Modal {
       attr: { style: 'text-align: center; font-size: 0.85em; color: var(--text-muted); margin-top: 10px;' },
     });
 
-    const btnRow = content.createDiv({ attr: { style: 'text-align: center; margin-top: 10px;' } });
+    const btnRow = content.createDiv({ attr: { style: 'text-align: center; margin-top: 12px; display: flex; gap: 8px; justify-content: center;' } });
     const refreshBtn = btnRow.createEl('button', { text: '刷新二维码' });
     refreshBtn.onclick = () => void this.onOpen();
 
+    const webBtn = btnRow.createEl('button', { text: '在浏览器后台扫码' });
+    webBtn.onclick = () => window.open(this.client.baseUrl, '_blank');
+
     // Poll status every 2 seconds
+    if (this.timer) window.clearInterval(this.timer);
     this.timer = window.setInterval(() => {
       void (async () => {
         const status = await this.client.checkQrStatus();
@@ -370,4 +382,5 @@ export class WeChatQrAuthModal extends Modal {
     this.contentEl.empty();
   }
 }
+
 
