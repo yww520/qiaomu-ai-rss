@@ -10,7 +10,8 @@ import { readingFonts, selectableFonts, ReadingFonts } from './fonts';
 import { registerImageDrops } from './image-drag';
 import { LocalImages } from './images';
 import { Subscriptions } from './subscriptions';
-import { SubscriptionManager, type SubscriptionTab } from './subscription-ui';
+import { SubscriptionManager, WeChatQrAuthModal, type SubscriptionTab } from './subscription-ui';
+import { WeMpClient } from './wemp-api';
 import { DiscoveryView, DISCOVERY_VIEW_TYPE } from './discovery-view';
 
 export default class QiaomuRssPlugin extends Plugin {
@@ -365,6 +366,12 @@ class RssSettings extends PluginSettingTab {
           setting.addText(text => text.setPlaceholder('可选 Token').setValue(settings.weMpToken).onChange(async value => {
             settings.weMpToken = value.trim();
             await this.plugin.persist();
+          }));
+        } },
+        { name: '微信扫码授权', desc: '直接在 Obsidian 弹窗中扫码登录微信，授权云端抓取服务。', render: setting => {
+          setting.addButton(button => button.setButtonText('弹出微信二维码扫码').setCta().onClick(() => {
+            const client = new WeMpClient(() => settings.weMpServerUrl, () => settings.weMpToken);
+            new WeChatQrAuthModal(this.plugin, client, () => { new Notice('🎉 微信已成功授权！'); }).open();
           }));
         } },
         { name: '微信公众号订阅管理', desc: '在订阅弹窗中搜索并添加关注的公众号。', render: setting => {

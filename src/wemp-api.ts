@@ -39,6 +39,8 @@ interface SearchResult {
 }
 
 export class WeMpClient {
+  private cachedToken: string = '';
+
   constructor(private getServerUrl: () => string, private getToken: () => string) {}
 
   public get baseUrl(): string {
@@ -47,16 +49,42 @@ export class WeMpClient {
     return url;
   }
 
-  private get headers(): Record<string, string> {
-    const token = this.getToken().trim();
+  private async ensureToken(): Promise<string> {
+    const configured = this.getToken().trim();
+    if (configured) return configured;
+    if (this.cachedToken) return this.cachedToken;
+
+    // Try login with default admin credentials
+    try {
+      const loginUrl = `${this.baseUrl}/api/v1/wx/auth/login`;
+      const res = await requestUrl({
+        url: loginUrl,
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'username=admin&password=admin@123',
+        throw: false,
+      });
+      if (res.status === 200) {
+        const json = res.json as ApiResponse<{ access_token?: string }>;
+        if (json?.data?.access_token) {
+          this.cachedToken = json.data.access_token;
+          return this.cachedToken;
+        }
+      }
+    } catch (e) {
+      console.warn('[WeMpClient] auto login failed:', e);
+    }
+    return '';
+  }
+
+  private async getHeaders(): Promise<Record<string, string>> {
+    const token = await this.ensureToken();
     const headers: Record<string, string> = {
       'Accept': 'application/json',
       'Content-Type': 'application/json',
     };
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
-      headers['X-API-Key'] = token;
-      headers['X-Access-Key'] = token;
     }
     return headers;
   }
@@ -65,7 +93,8 @@ export class WeMpClient {
     try {
       const rootRes = await requestUrl({ url: `${this.baseUrl}/`, method: 'GET', throw: false });
       if (rootRes.status === 200) {
-        const mpsRes = await requestUrl({ url: `${this.baseUrl}/api/v1/mps?limit=1`, method: 'GET', headers: this.headers, throw: false });
+        const headers = await this.getHeaders();
+        const mpsRes = await requestUrl({ url: `${this.baseUrl}/api/v1/wx/mps?limit=1`, method: 'GET', headers, throw: false });
         if (mpsRes.status === 401 || mpsRes.status === 403) {
           return { ok: true, message: '服务在线（需在设置中配置 Access Token）', requiresAuth: true };
         }
@@ -77,10 +106,48 @@ export class WeMpClient {
     }
   }
 
+  async getQrCode(): Promise<{ ok: boolean; qrImageUrl: string; message: string }> {
+    try {
+      const headers = await this.getHeaders();
+      const url = `${this.baseUrl}/api/v1/wx/auth/qr/code`;
+      const res = await requestUrl({ url, method: 'GET', headers, throw: false });
+      if (res.status === 200) {
+        const json = res.json as ApiResponse<{ code?: string }>;
+        const codePath = json?.data?.code || '';
+        if (codePath) {
+          const qrImageUrl = codePath.startsWith('http') ? codePath : `${this.baseUrl}${codePath}`;
+          return { ok: true, qrImageUrl, message: '获取成功' };
+        }
+      }
+      return { ok: false, qrImageUrl: '', message: `获取二维码失败 (HTTP ${res.status})` };
+    } catch (e) {
+      return { ok: false, qrImageUrl: '', message: String(e) };
+    }
+  }
+
+  async checkQrStatus(): Promise<{ loginStatus: boolean; qrCode: boolean }> {
+    try {
+      const headers = await this.getHeaders();
+      const url = `${this.baseUrl}/api/v1/wx/auth/qr/status`;
+      const res = await requestUrl({ url, method: 'GET', headers, throw: false });
+      if (res.status === 200) {
+        const json = res.json as ApiResponse<{ login_status?: boolean; qr_code?: boolean }>;
+        return {
+          loginStatus: Boolean(json?.data?.login_status),
+          qrCode: Boolean(json?.data?.qr_code),
+        };
+      }
+      return { loginStatus: false, qrCode: false };
+    } catch {
+      return { loginStatus: false, qrCode: false };
+    }
+  }
+
   async listSubscribedMps(): Promise<WeMpAccount[]> {
     try {
-      const url = `${this.baseUrl}/api/v1/mps?limit=100`;
-      const res = await requestUrl({ url, method: 'GET', headers: this.headers, throw: false });
+      const headers = await this.getHeaders();
+      const url = `${this.baseUrl}/api/v1/wx/mps?limit=100`;
+      const res = await requestUrl({ url, method: 'GET', headers, throw: false });
       if (res.status === 200) {
         const json = res.json as ApiResponse<MpListResult> | undefined;
         const list = json?.data?.list ?? [];
@@ -103,9 +170,10 @@ export class WeMpClient {
   async searchAccounts(keyword: string): Promise<WeMpAccount[]> {
     if (!keyword.trim()) return [];
     try {
+      const headers = await this.getHeaders();
       const query = encodeURIComponent(keyword.trim());
-      const url = `${this.baseUrl}/api/v1/mps/search/${query}`;
-      const res = await requestUrl({ url, method: 'GET', headers: this.headers, throw: false });
+      const url = `${this.baseUrl}/api/v1/wx/mps/search/${query}`;
+      const res = await requestUrl({ url, method: 'GET', headers, throw: false });
       if (res.status === 200) {
         const json = res.json as ApiResponse<SearchResult> | undefined;
         const list = json?.data?.list ?? [];
@@ -128,11 +196,12 @@ export class WeMpClient {
 
   async subscribe(account: WeMpAccount): Promise<{ ok: boolean; feedUrl: string; message: string }> {
     try {
-      const url = `${this.baseUrl}/api/v1/mps`;
+      const headers = await this.getHeaders();
+      const url = `${this.baseUrl}/api/v1/wx/mps`;
       const res = await requestUrl({
         url,
         method: 'POST',
-        headers: this.headers,
+        headers,
         body: JSON.stringify({
           mp_name: account.name,
           mp_id: account.fakeid ?? account.id,

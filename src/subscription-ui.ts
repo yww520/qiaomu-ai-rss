@@ -68,10 +68,18 @@ export class SubscriptionManager extends Modal {
 
     const statusRow = container.createDiv({ cls: 'qrs-subscription-tools' });
     const statusText = statusRow.createSpan({ text: `云端服务: ${settings.weMpServerUrl || '未配置'}` });
+    const qrBtn = statusRow.createEl('button', { text: '微信扫码授权', cls: 'mod-cta' });
     const checkBtn = statusRow.createEl('button', { text: '测试连接' });
     const webBtn = statusRow.createEl('button', { text: '打开服务后台' });
     webBtn.onclick = () => {
       if (settings.weMpServerUrl) window.open(settings.weMpServerUrl, '_blank');
+    };
+
+    qrBtn.onclick = () => {
+      new WeChatQrAuthModal(this.plugin, client, () => {
+        this.body.empty();
+        this.renderWechat();
+      }).open();
     };
 
     checkBtn.onclick = async () => {
@@ -292,3 +300,74 @@ class OpmlImport extends Modal {
     };
   }
 }
+
+export class WeChatQrAuthModal extends Modal {
+  private timer?: number;
+  constructor(private plugin: QiaomuRssPlugin, private client: WeMpClient, private onSuccess: () => void) {
+    super(plugin.app);
+  }
+  async onOpen() {
+    this.setTitle('微信扫码授权');
+    const content = this.contentEl;
+    content.empty();
+    content.addClass('qrs-subscription-modal');
+
+    const desc = content.createEl('p', {
+      text: '正在连接云端获取微信登录二维码…',
+      attr: { style: 'text-align: center; color: var(--text-muted); margin-bottom: 12px;' },
+    });
+    const imgContainer = content.createDiv({
+      attr: { style: 'display: flex; justify-content: center; align-items: center; min-height: 220px;' },
+    });
+
+    const qrRes = await this.client.getQrCode();
+    if (!qrRes.ok || !qrRes.qrImageUrl) {
+      desc.setText(`获取二维码失败: ${qrRes.message}`);
+      const btnRow = content.createDiv({ attr: { style: 'text-align: center; margin-top: 12px;' } });
+      const retryBtn = btnRow.createEl('button', { text: '重试', cls: 'mod-cta' });
+      retryBtn.onclick = () => void this.onOpen();
+      return;
+    }
+
+    desc.setText('请使用手机微信扫一扫下方二维码，并在手机上确认登录：');
+    imgContainer.createEl('img', {
+      attr: {
+        src: qrRes.qrImageUrl,
+        alt: '微信扫码授权',
+        style: 'width: 220px; height: 220px; border-radius: 8px; border: 1px solid var(--background-modifier-border); background: #fff;',
+      },
+    });
+
+    content.createEl('p', {
+      text: '手机确认后，此窗口将自动检测并完成授权',
+      attr: { style: 'text-align: center; font-size: 0.85em; color: var(--text-muted); margin-top: 10px;' },
+    });
+
+    const btnRow = content.createDiv({ attr: { style: 'text-align: center; margin-top: 10px;' } });
+    const refreshBtn = btnRow.createEl('button', { text: '刷新二维码' });
+    refreshBtn.onclick = () => void this.onOpen();
+
+    // Poll status every 2 seconds
+    this.timer = window.setInterval(() => {
+      void (async () => {
+        const status = await this.client.checkQrStatus();
+        if (status.loginStatus) {
+          if (this.timer) window.clearInterval(this.timer);
+          this.timer = undefined;
+          new Notice('🎉 微信扫码授权成功！');
+          this.close();
+          this.onSuccess();
+        }
+      })();
+    }, 2000);
+  }
+
+  onClose() {
+    if (this.timer) {
+      window.clearInterval(this.timer);
+      this.timer = undefined;
+    }
+    this.contentEl.empty();
+  }
+}
+
