@@ -247,5 +247,44 @@ export class WeMpClient {
       return { ok: true, feedUrl: `${this.baseUrl}/feed/${account.id}.xml`, message: '添加订阅源' };
     }
   }
+
+  async updateMpArticles(mpId: string): Promise<{ ok: boolean; message: string }> {
+
+    try {
+      const headers = await this.getHeaders();
+      const url = `${this.baseUrl}/api/v1/wx/mps/update/${mpId}`;
+      const res = await requestUrl({ url, method: 'GET', headers, throw: false });
+      if (res.status === 200) {
+        return { ok: true, message: '已触发云端同步抓取，请稍候刷新查看' };
+      }
+      return { ok: false, message: `触发同步失败 (HTTP ${res.status})` };
+    } catch (e) {
+      return { ok: false, message: e instanceof Error ? e.message : String(e) };
+    }
+  }
+
+  async importArticle(articleUrl: string): Promise<{ ok: boolean; message: string; feedUrl: string }> {
+    try {
+      const headers = await this.getHeaders();
+      const url = `${this.baseUrl}/api/v1/wx/mps/featured/article`;
+      const res = await requestUrl({
+        url,
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ url: articleUrl.trim() }),
+        throw: false,
+      });
+      if (res.status >= 200 && res.status < 300) {
+        return {
+          ok: true,
+          message: '文章已开始抓取并加入精选文章源',
+          feedUrl: `${this.baseUrl}/feed/MP_WXS_FEATURED_ARTICLES.xml`,
+        };
+      }
+      return { ok: false, message: `导入文章失败 (HTTP ${res.status})`, feedUrl: '' };
+    } catch (e) {
+      return { ok: false, message: e instanceof Error ? e.message : String(e), feedUrl: '' };
+    }
+  }
 }
 

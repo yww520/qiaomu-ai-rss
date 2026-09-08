@@ -117,11 +117,51 @@ export class SubscriptionManager extends Modal {
         const info = row.createDiv('qrs-subscription-info');
         info.createDiv({ cls: 'qrs-subscription-name', text: feed.name });
         info.createDiv({ cls: 'qrs-subscription-detail', text: `${feed.entries.length} 篇 · ${feed.url}` });
-        const remove = row.createEl('button', { cls: 'qrs-subscription-icon', attr: { 'data-qrs-label': `取消关注 ${feed.name}` } });
+        
+        const actions = row.createDiv({ attr: { style: 'display: flex; gap: 6px; align-items: center;' } });
+        const syncBtn = actions.createEl('button', { cls: 'qrs-subscription-icon', attr: { 'data-qrs-label': `同步文章 ${feed.name}` } });
+        setIcon(syncBtn, 'refresh-cw');
+        syncBtn.onclick = async () => {
+          syncBtn.disabled = true;
+          const match = feed.url.match(/\/feed\/([^/.]+)\.xml/);
+          if (match && match[1] && !match[1].startsWith('all')) {
+            new Notice(`正在触发云端同步抓取「${feed.name}」…`);
+            await client.updateMpArticles(match[1]);
+          }
+          await this.plugin.subscriptions.refresh([feed.id], this.contentEl.ownerDocument, true);
+          const updatedCount = this.plugin.state.subscriptions.find(s => s.id === feed.id)?.entries.length || 0;
+          new Notice(`「${feed.name}」已刷新，当前共 ${updatedCount} 篇文章`);
+          this.body.empty();
+          this.renderWechat();
+          this.changed();
+        };
+
+        const remove = actions.createEl('button', { cls: 'qrs-subscription-icon', attr: { 'data-qrs-label': `取消关注 ${feed.name}` } });
         setIcon(remove, 'trash-2');
         remove.onclick = () => new RemoveSubscription(this.plugin, feed, () => { this.body.empty(); this.renderWechat(); this.changed(); }).open();
       }
     }
+
+    const quickTools = container.createDiv({ cls: 'qrs-subscription-tools', attr: { style: 'margin-top: 14px; margin-bottom: 8px;' } });
+    const addAllBtn = quickTools.createEl('button', { text: '订阅公众号全量汇总源 (All-in-One)' });
+    addAllBtn.onclick = async () => {
+      const allFeedUrl = `${settings.weMpServerUrl.replace(/\/$/, '')}/feed/all.xml`;
+      await this.plugin.subscriptions.add(allFeedUrl, '微信公众号', this.contentEl.ownerDocument);
+      new Notice('已添加微信公众号全量汇总源');
+      this.body.empty();
+      this.renderWechat();
+      this.changed();
+    };
+
+    const importArticleBtn = quickTools.createEl('button', { text: '导入单篇微信文章链接…' });
+    importArticleBtn.onclick = () => {
+      new ImportWechatArticleModal(this.plugin, client, () => {
+        this.body.empty();
+        this.renderWechat();
+        this.changed();
+      }).open();
+    };
+
 
     form.onsubmit = async (e) => {
       e.preventDefault();
@@ -441,5 +481,60 @@ export class WeChatQrAuthModal extends Modal {
   }
 }
 
+export class ImportWechatArticleModal extends Modal {
+  constructor(private plugin: QiaomuRssPlugin, private client: WeMpClient, private onSuccess: () => void) {
+    super(plugin.app);
+  }
 
+  onOpen() {
+    this.setTitle('导入单篇微信文章');
+    const content = this.contentEl;
+    content.empty();
+    content.addClass('qrs-subscription-modal');
 
+    content.createEl('p', {
+      text: '粘贴任意微信公众号文章链接（https://mp.weixin.qq.com/s/...），云端将实时抓取全文并加入「精选文章」源：',
+      attr: { style: 'color: var(--text-muted); margin-bottom: 12px;' },
+    });
+
+    const form = content.createEl('form', { cls: 'qrs-subscription-add' });
+    const input = form.createEl('input', {
+      type: 'url',
+      placeholder: 'https://mp.weixin.qq.com/s/...',
+      attr: { style: 'flex: 1;', required: '' },
+    });
+    const submitBtn = form.createEl('button', { text: '抓取并订阅', type: 'submit', cls: 'mod-cta' });
+    const statusMsg = content.createDiv({ cls: 'qrs-subscription-message', attr: { role: 'status' } });
+
+    form.onsubmit = async (e) => {
+      e.preventDefault();
+      const url = input.value.trim();
+      if (!url.includes('mp.weixin.qq.com/s/')) {
+        statusMsg.setText('请输入有效的微信公众号文章链接 (以 https://mp.weixin.qq.com/s/ 开头)');
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.setText('正在抓取…');
+      statusMsg.setText('云端正在使用无头浏览器提取文章并生成订阅源，约需 5~10 秒…');
+
+      try {
+        const res = await this.client.importArticle(url);
+        if (res.ok && res.feedUrl) {
+          await this.plugin.subscriptions.add(res.feedUrl, '微信公众号', this.contentEl.ownerDocument);
+          new Notice('文章已成功抓取并加入微信公众号订阅！');
+          this.close();
+          this.onSuccess();
+        } else {
+          statusMsg.setText(res.message);
+          submitBtn.disabled = false;
+          submitBtn.setText('抓取并订阅');
+        }
+      } catch (err) {
+        statusMsg.setText(`抓取失败: ${err instanceof Error ? err.message : String(err)}`);
+        submitBtn.disabled = false;
+        submitBtn.setText('抓取并订阅');
+      }
+    };
+  }
+}
