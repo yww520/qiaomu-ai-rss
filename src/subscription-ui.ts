@@ -5,7 +5,9 @@ import type QiaomuRssPlugin from './main';
 import { exportOpml, MAX_SUBSCRIPTIONS, parseOpml, type FeedInput } from './feeds';
 import type { Subscription } from './model';
 
-export type SubscriptionTab = 'mine' | 'explore' | 'local';
+import { WeMpClient } from './wemp-api';
+
+export type SubscriptionTab = 'mine' | 'explore' | 'wechat' | 'local';
 export class SubscriptionManager extends Modal {
   private list!: HTMLElement;
   private message!: HTMLElement;
@@ -16,13 +18,14 @@ export class SubscriptionManager extends Modal {
     this.setTitle('订阅管理'); this.modalEl.addClass('qrs-subscription-modal');
     const tabs = this.contentEl.createDiv({ cls: 'qrs-subscription-tabs', attr: { role: 'tablist' } });
     this.body = this.contentEl.createDiv({ cls: 'qrs-subscription-body', attr: { role: 'tabpanel', id: `qrs-sources-${crypto.randomUUID()}` } });
-    const choices: [SubscriptionTab, string][] = [['mine', '我的订阅'], ['explore', '探索'], ['local', '本地文件夹']];
+    const choices: [SubscriptionTab, string][] = [['mine', '我的订阅'], ['explore', '探索'], ['wechat', '微信公众号'], ['local', '本地文件夹']];
     const select = (tab: SubscriptionTab) => {
       this.tab = tab;
       for (const button of tabs.querySelectorAll('button')) { const selected = button.dataset.tab === tab; button.setAttribute('aria-selected', String(selected)); button.tabIndex = selected ? 0 : -1; }
       this.discovery?.unload(); this.discovery = undefined; this.body.empty();
       if (tab === 'mine') this.renderMine();
       else if (tab === 'explore') { this.discovery = new DiscoveryPanel(this.body.createDiv(), this.plugin, true); this.discovery.load(); }
+      else if (tab === 'wechat') this.renderWechat();
       else this.renderLocal();
     };
     for (const [tab, label] of choices) {
@@ -56,6 +59,126 @@ export class SubscriptionManager extends Modal {
       }));
     }
     if (!this.plugin.state.settings.markdownFolders.length) this.body.createEl('p', { cls: 'qrs-subscription-help', text: '选择剪藏文件夹或笔记，在阅读器中阅读。' });
+  }
+  private renderWechat() {
+    const settings = this.plugin.state.settings;
+    const client = new WeMpClient(() => settings.weMpServerUrl, () => settings.weMpToken);
+
+    const container = this.body.createDiv('qrs-wechat-panel');
+
+    const statusRow = container.createDiv({ cls: 'qrs-subscription-tools' });
+    const statusText = statusRow.createSpan({ text: `云端服务: ${settings.weMpServerUrl || '未配置'}` });
+    const checkBtn = statusRow.createEl('button', { text: '测试连接' });
+    const webBtn = statusRow.createEl('button', { text: '打开服务后台' });
+    webBtn.onclick = () => {
+      if (settings.weMpServerUrl) window.open(settings.weMpServerUrl, '_blank');
+    };
+
+    checkBtn.onclick = async () => {
+      checkBtn.disabled = true;
+      checkBtn.setText('测试中…');
+      const health = await client.checkHealth();
+      checkBtn.disabled = false;
+      checkBtn.setText('测试连接');
+      if (health.ok) {
+        new Notice(`We-MP-RSS 连接正常: ${health.message}`);
+        statusText.setText(`云端服务: ${settings.weMpServerUrl} (在线)`);
+      } else {
+        new Notice(`连接失败: ${health.message}`);
+        statusText.setText(`云端服务: ${settings.weMpServerUrl} (离线/失败)`);
+      }
+    };
+
+    const form = container.createEl('form', { cls: 'qrs-subscription-add' });
+    const input = form.createEl('input', {
+      type: 'text',
+      placeholder: '搜索微信公众号（如：晚点LatePost、机器之心、新智元）…',
+      attr: { style: 'flex: 1;' },
+    });
+    const searchBtn = form.createEl('button', { text: '搜索', type: 'submit', cls: 'mod-cta' });
+    const resultBox = container.createDiv({ cls: 'qrs-wechat-results' });
+
+    // Show currently synced WeChat subscriptions
+    const wechatSubs = this.plugin.state.subscriptions.filter(s => s.group === '微信公众号' || s.url.includes('/feed/'));
+    if (wechatSubs.length) {
+      const existingSection = container.createDiv({ cls: 'qrs-wechat-existing', attr: { style: 'margin-top: 16px;' } });
+      existingSection.createEl('h4', { text: `已关注的微信公众号 (${wechatSubs.length})`, attr: { style: 'margin-bottom: 8px;' } });
+      const subList = existingSection.createDiv('qrs-subscription-list');
+      for (const feed of wechatSubs) {
+        const row = subList.createDiv('qrs-subscription-row');
+        const info = row.createDiv('qrs-subscription-info');
+        info.createDiv({ cls: 'qrs-subscription-name', text: feed.name });
+        info.createDiv({ cls: 'qrs-subscription-detail', text: `${feed.entries.length} 篇 · ${feed.url}` });
+        const remove = row.createEl('button', { cls: 'qrs-subscription-icon', attr: { 'data-qrs-label': `取消关注 ${feed.name}` } });
+        setIcon(remove, 'trash-2');
+        remove.onclick = () => new RemoveSubscription(this.plugin, feed, () => { this.body.empty(); this.renderWechat(); this.changed(); }).open();
+      }
+    }
+
+    form.onsubmit = async (e) => {
+      e.preventDefault();
+      const kw = input.value.trim();
+      if (!kw) return;
+      searchBtn.disabled = true;
+      searchBtn.setText('搜索中…');
+      resultBox.empty();
+      resultBox.createEl('p', { text: `正在云端检索「${kw}」…`, cls: 'qrs-subscription-message' });
+
+      try {
+        const accounts = await client.searchAccounts(kw);
+        resultBox.empty();
+        if (!accounts.length) {
+          const emptyDiv = resultBox.createDiv({ cls: 'qrs-empty', attr: { style: 'padding: 12px;' } });
+          emptyDiv.createEl('p', { text: `未从云端检索到「${kw}」公众号。` });
+          emptyDiv.createEl('p', { text: '提示：可先登录服务后台完成微信扫码授权，或点击下方按钮直接以标准 Feed 订阅：', attr: { style: 'font-size: 0.85em; color: var(--text-muted);' } });
+          const forceBtn = emptyDiv.createEl('button', { text: `以此名称订阅并加入微信公众号分组`, cls: 'mod-cta' });
+          forceBtn.onclick = async () => {
+            const feedUrl = `${settings.weMpServerUrl.replace(/\/$/, '')}/feed/${encodeURIComponent(kw)}`;
+            await this.plugin.subscriptions.add(feedUrl, '微信公众号', this.contentEl.ownerDocument);
+            new Notice(`已添加公众号：${kw}`);
+            this.body.empty();
+            this.renderWechat();
+            this.changed();
+          };
+          return;
+        }
+
+        for (const acc of accounts) {
+          const card = resultBox.createDiv({ cls: 'qrs-subscription-row', attr: { style: 'padding: 10px 14px; margin-bottom: 8px;' } });
+          const info = card.createDiv('qrs-subscription-info');
+          info.createDiv({ cls: 'qrs-subscription-name', text: acc.name });
+          if (acc.description) {
+            info.createDiv({ cls: 'qrs-subscription-detail', text: acc.description });
+          }
+
+          const isSubscribed = this.plugin.state.subscriptions.some(s => s.name === acc.name || s.url.includes(acc.id));
+          const subBtn = card.createEl('button', { text: isSubscribed ? '已关注' : '关注订阅', cls: isSubscribed ? '' : 'mod-cta' });
+          if (isSubscribed) subBtn.disabled = true;
+
+          subBtn.onclick = async () => {
+            subBtn.disabled = true;
+            subBtn.setText('订阅中…');
+            try {
+              const res = await client.subscribe(acc);
+              await this.plugin.subscriptions.add(res.feedUrl, '微信公众号', this.contentEl.ownerDocument);
+              new Notice(`已成功订阅公众号：${acc.name}`);
+              subBtn.setText('已关注');
+              this.changed();
+            } catch (subErr) {
+              new Notice(`订阅出错: ${subErr instanceof Error ? subErr.message : String(subErr)}`);
+              subBtn.disabled = false;
+              subBtn.setText('重试');
+            }
+          };
+        }
+      } catch (err) {
+        resultBox.empty();
+        resultBox.createDiv({ cls: 'qrs-subscription-error', text: `检索出错: ${err instanceof Error ? err.message : String(err)}` });
+      } finally {
+        searchBtn.disabled = false;
+        searchBtn.setText('搜索');
+      }
+    };
   }
   private renderMine() {
     const form = this.body.createEl('form', { cls: 'qrs-subscription-add' });

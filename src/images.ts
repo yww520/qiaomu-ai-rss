@@ -34,7 +34,15 @@ export class LocalImages {
     let timer: number | undefined;
     try {
       const response = await Promise.race([
-        requestUrl({ url, method: 'GET', throw: false }),
+        requestUrl({
+          url,
+          method: 'GET',
+          headers: {
+            'Referer': '',
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+          },
+          throw: false,
+        }),
         new Promise<never>((_, reject) => { timer = window.setTimeout(() => reject(new Error('图片加载超时。')), 20000); }),
       ]);
       if (response.status < 200 || response.status >= 300) throw new Error('图片加载失败。');

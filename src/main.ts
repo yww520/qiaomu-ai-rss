@@ -354,6 +354,23 @@ class RssSettings extends PluginSettingTab {
         } },
       ] },
       { name: '本地数据', desc: '已读、收藏与缓存保存在当前库。浏览频道、切换文章或刷新时请求服务，不会上传你的笔记。' },
+      { type: 'group', heading: '微信公众号 (We-MP-RSS)', items: [
+        { name: '云端服务地址', desc: '部署了 we-mp-rss 服务的地址（例如 http://43.156.114.156:8001）。', render: setting => {
+          setting.addText(text => text.setPlaceholder('http://43.156.114.156:8001').setValue(settings.weMpServerUrl).onChange(async value => {
+            settings.weMpServerUrl = value.trim();
+            await this.plugin.persist();
+          }));
+        } },
+        { name: '访问 Token / API Key', desc: '如果你的 We-MP-RSS 启用了鉴权或 API Key，请在这里填写。', render: setting => {
+          setting.addText(text => text.setPlaceholder('可选 Token').setValue(settings.weMpToken).onChange(async value => {
+            settings.weMpToken = value.trim();
+            await this.plugin.persist();
+          }));
+        } },
+        { name: '微信公众号订阅管理', desc: '在订阅弹窗中搜索并添加关注的公众号。', render: setting => {
+          setting.addButton(button => button.setButtonText('打开微信公众号订阅').onClick(() => this.plugin.manageSubscriptions('wechat')));
+        } },
+      ] },
     ];
     const reading = definitions[0];
     if (!('type' in reading) || reading.type !== 'group') return definitions;
@@ -361,7 +378,7 @@ class RssSettings extends PluginSettingTab {
     reading.heading = '阅读';
     const buckets: Record<string, SettingDefinitionItem[]> = {
       '阅读': [reading, definitions[4], definitions[5]],
-      '来源': [definitions[2], definitions[1], definitions[3]],
+      '来源': [definitions[2], definitions[8], definitions[1], definitions[3]],
       '摘录': [excerpt, definitions[7]],
       '关于': [definitions[6], ...[
         ['建议与问题反馈', 'GitHub Issues', 'https://github.com/joeseesun/qiaomu-ai-rss/issues'],
