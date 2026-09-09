@@ -31,8 +31,10 @@ export class ChannelPicker extends Component {
     this.panel.createEl('label', { text: '搜索频道', cls: 'qrs-visually-hidden', attr: { for: searchId } });
     this.search = this.panel.createEl('input', { type: 'search', placeholder: '搜索频道…', attr: { id: searchId } });
     addSearchClear(this.search);
-    this.rows = this.panel.createDiv('qrs-channel-options');
     const current = this.choices.find(c => c.id === this.active);
+    for (const c of this.choices) {
+      if (c.section === '订阅分组') this.expanded.add(c.id.slice(7));
+    }
     if (current?.group) this.expanded.add(current.group);
     if (current?.section === '订阅分组') this.expanded.add(current.id.slice(7));
     this.search.oninput = () => this.render();
@@ -91,7 +93,7 @@ export class ChannelPicker extends Component {
       return;
     }
     this.choices.filter(c => c.section === '聚合').forEach(c => row(c));
-    for (const [section, label] of [['乔木频道', '乔木频道'], ['我的订阅源', '个人订阅'], ['库内文件夹', '本地文件']] as const) {
+    for (const [section, label] of [['我的订阅源', '个人订阅'], ['乔木频道', '乔木频道'], ['库内文件夹', '本地文件']] as const) {
       const choices = this.choices.filter(c => c.section === section);
       const groups = section === '我的订阅源' ? this.choices.filter(c => c.section === '订阅分组') : [];
       if (!choices.length && !groups.length) continue;
