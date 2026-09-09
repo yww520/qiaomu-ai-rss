@@ -2,8 +2,8 @@ import { EditorView } from '@codemirror/view';
 import { MarkdownView, Notice, Plugin, PluginSettingTab, TFile, type App, type SettingDefinitionItem } from 'obsidian';
 import { requestUrl } from 'obsidian';
 import { RssApi } from './api';
-import { deduplicateEntriesList, folderPath, initialState, modeLabels, modeSchema, noteNamingPatternLabels, noteNamingPatternSchema, readingFontSchema, type Bundle, type Entry, type Mode, type State } from './model';
-import { cleanCaptureMarkers, repairArticleLinks, appendDailyNoteLink, articleNotePath, dailyNotePath, readDailyNoteSettings, renderDailyNoteTemplate } from './daily-note';
+import { deduplicateEntriesList, folderPath, initialState, modeLabels, modeSchema, noteHierarchyLabels, noteHierarchySchema, noteNamingPatternLabels, noteNamingPatternSchema, readingFontSchema, type Bundle, type Entry, type Mode, type State } from './model';
+import { cleanCaptureMarkers, repairArticleLinks, appendDailyNoteLink, articleNotePath, dailyNotePath, readDailyNoteSettings, renderDailyNoteTemplate, sanitizeFilename } from './daily-note';
 import { ReaderView, VIEW_TYPE } from './view';
 import { vaultSourceId, VaultFolderPicker, VaultSources } from './vault-source';
 import { readingFonts, selectableFonts, ReadingFonts } from './fonts';
@@ -158,6 +158,13 @@ export default class QiaomuRssPlugin extends Plugin {
     const file = this.app.workspace.getActiveViewOfType(MarkdownView)?.file ?? this.lastNote;
     return file && this.app.vault.getAbstractFileByPath(file.path) === file ? file : null;
   }
+  articleSourceName(entry: Entry): string {
+    const feed = this.state.subscriptions.find(f => f.id === entry.sourceId);
+    if (feed && (feed.url.includes('FEATURED_ARTICLES') || feed.url.includes('/all.xml'))) {
+      if (entry.author) return entry.author;
+    }
+    return feed?.name || entry.author || entry.sourceName || this.state.sources.find(s => s.id === entry.sourceId)?.name || '未分类';
+  }
   async appendToDailyNote(entry: Entry, excerpt = '', mode: Mode = 'original', target?: TFile): Promise<{ file: TFile; added: boolean }> {
     let result!: { file: TFile; added: boolean };
     const write = async () => {
@@ -167,14 +174,22 @@ export default class QiaomuRssPlugin extends Plugin {
       await this.persist();
       const options = { vault: this.app.vault.getName(), article: id, mode, excerpt, rawMarkdown: true };
       if (target && this.app.vault.getAbstractFileByPath(target.path) !== target) throw new Error('目标笔记已不存在。');
-      const settings = target ? { folder: '', format: '', template: '' } : await readDailyNoteSettings(this.app.vault);
-      const path = target?.path ?? articleNotePath(settings, entry, this.state.settings.noteNamingPattern);
+      const noteFolder = this.state.settings.noteFolder || `${folderPath(this.state.settings.folder)}/notes`;
+      const sourceName = this.articleSourceName(entry);
+      const path = target?.path ?? articleNotePath(
+        { folder: noteFolder, format: 'YYYY-MM-DD' },
+        entry,
+        this.state.settings.noteNamingPattern,
+        this.state.settings.noteHierarchy,
+        sourceName
+      );
       let existing = this.app.vault.getAbstractFileByPath(path);
       let added = false;
       if (existing && !(existing instanceof TFile)) throw new Error('笔记路径已被文件夹占用。');
       if (!(existing instanceof TFile)) {
         await this.ensureFolder(path);
         let template = '';
+        const settings = await readDailyNoteSettings(this.app.vault);
         if (settings.template) {
           const templateFile = this.app.vault.getAbstractFileByPath(`${settings.template}.md`);
           if (templateFile instanceof TFile) template = renderDailyNoteTemplate(await this.app.vault.read(templateFile), path.split('/').at(-1)?.replace(/\.md$/i, '') || '');
@@ -261,11 +276,20 @@ export default class QiaomuRssPlugin extends Plugin {
     if (view instanceof ReaderView) view.showSubscriptions();
   }
   async exportArticleNotes(entry: Entry, highlights: import('./model').Highlight[]): Promise<TFile> {
-    const folder = folderPath(this.state.settings.folder);
-    await this.ensureFolder(`${folder}/notes/dummy.md`);
-    const sanitizedTitle = (entry.titleZh || entry.title).replace(/[\\/:*?"<>|]/g, '_').slice(0, 80);
+    const baseFolder = this.state.settings.noteFolder || `${folderPath(this.state.settings.folder)}/notes`;
+    const sourceName = this.articleSourceName(entry);
+    const sanitizedTitle = sanitizeFilename(entry.titleZh || entry.title);
     const filename = `${sanitizedTitle} - 读书笔记.md`;
-    const fullPath = `${folder}/notes/${filename}`;
+
+    let subfolder = '';
+    const hierarchy = this.state.settings.noteHierarchy;
+    if (hierarchy === 'source' || hierarchy === 'sourceDate') {
+      subfolder = sanitizeFilename(sourceName);
+    } else if (hierarchy === 'date') {
+      subfolder = new Date().toISOString().slice(0, 7);
+    }
+    const fullPath = [baseFolder, subfolder, filename].filter(Boolean).join('/');
+    await this.ensureFolder(fullPath);
 
     const dateStr = new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' });
     const timeStr = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
@@ -500,6 +524,29 @@ class RssSettings extends PluginSettingTab {
         },
       ]
     };
+    const noteFolderSetting: SettingDefinitionItem = {
+      name: '文章笔记保存目录',
+      desc: '保存文章笔记与读书笔记的存放文件夹（默认 Qiaomu RSS/notes）。',
+      render: setting => {
+        setting.addText(text => text.setPlaceholder('Qiaomu RSS/notes').setValue(settings.noteFolder).onChange(async value => {
+          settings.noteFolder = value.trim() || 'Qiaomu RSS/notes';
+          await this.plugin.persist();
+        }));
+      }
+    };
+    const noteHierarchySetting: SettingDefinitionItem = {
+      name: '文章笔记分类层级',
+      desc: '新建笔记时的目录分类归档方式，避免所有笔记平铺在单一目录造成混乱。',
+      render: setting => {
+        setting.addDropdown(drop => {
+          for (const [value, label] of Object.entries(noteHierarchyLabels)) drop.addOption(value, label);
+          drop.setValue(settings.noteHierarchy).onChange(async value => {
+            settings.noteHierarchy = noteHierarchySchema.parse(value);
+            await this.plugin.persist();
+          });
+        });
+      }
+    };
     const notePatternSetting: SettingDefinitionItem = {
       name: '文章笔记命名规则',
       desc: '保存文章笔记（点击笔形图标或追加到日记）时的文件名格式。包含标题可避免多篇文章重叠，方便检索回顾。',
@@ -516,7 +563,7 @@ class RssSettings extends PluginSettingTab {
     const buckets: Record<string, SettingDefinitionItem[]> = {
       '阅读': [reading, definitions[4], definitions[5]],
       '来源': [definitions[2], definitions[8], definitions[1], definitions[3]],
-      '摘录': [excerpt, notePatternSetting, definitions[7]],
+      '摘录': [excerpt, noteFolderSetting, noteHierarchySetting, notePatternSetting, definitions[7]],
       'AI 总结': [aiGroup],
       '关于': [definitions[6], ...[
         ['建议与问题反馈', 'GitHub Issues', 'https://github.com/joeseesun/qiaomu-ai-rss/issues'],

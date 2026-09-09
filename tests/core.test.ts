@@ -110,7 +110,7 @@ describe('untrusted remote content', () => {
     expect(renderDailyNoteTemplate('# {{title}}\n{{date}} {{time}}', '2026-09-07', now)).toBe('# 2026-09-07\n2026-09-07 12:30');
   });
   it('generates article note paths with custom naming patterns and sanitized titles', () => {
-    const now = { format: (format: string) => ({ 'YYYY-MM-DD': '2026-09-09' })[format] || format } as never;
+    const now = { format: (format: string) => ({ 'YYYY-MM-DD': '2026-09-09', 'YYYY-MM': '2026-09' })[format] || format } as never;
     const entry: Entry = {
       id: 'test1',
       sourceId: 's1',
@@ -121,20 +121,28 @@ describe('untrusted remote content', () => {
 
     expect(sanitizeFilename('大摩:核心/要点? "引号" <标签> *星号* | 竖线')).toBe('大摩 核心 要点 引号 标签 星号 竖线');
 
-    // Default: dateTitle
-    expect(articleNotePath({ folder: 'Daily', format: 'YYYY-MM-DD', template: '' }, entry, 'dateTitle', now))
-      .toBe('Daily/2026-09-09 - 大摩闭门会核心判断：现在既不是2021，也不是924 特别关注.md');
+    // Default: dateTitle + source hierarchy
+    expect(articleNotePath({ folder: 'Qiaomu RSS/notes' }, entry, 'dateTitle', 'source', '投资作业本Pro', now))
+      .toBe('Qiaomu RSS/notes/投资作业本Pro/2026-09-09 - 大摩闭门会核心判断：现在既不是2021，也不是924 特别关注.md');
+
+    // date hierarchy (by month)
+    expect(articleNotePath({ folder: 'Qiaomu RSS/notes' }, entry, 'dateTitle', 'date', '投资作业本Pro', now))
+      .toBe('Qiaomu RSS/notes/2026-09/2026-09-09 - 大摩闭门会核心判断：现在既不是2021，也不是924 特别关注.md');
+
+    // sourceDate hierarchy (source/YYYY-MM)
+    expect(articleNotePath({ folder: 'Qiaomu RSS/notes' }, entry, 'dateTitle', 'sourceDate', '投资作业本Pro', now))
+      .toBe('Qiaomu RSS/notes/投资作业本Pro/2026-09/2026-09-09 - 大摩闭门会核心判断：现在既不是2021，也不是924 特别关注.md');
+
+    // Flat (no hierarchy)
+    expect(articleNotePath({ folder: 'Qiaomu RSS/notes' }, entry, 'dateTitle', 'none', '投资作业本Pro', now))
+      .toBe('Qiaomu RSS/notes/2026-09-09 - 大摩闭门会核心判断：现在既不是2021，也不是924 特别关注.md');
 
     // titleDate
-    expect(articleNotePath({ folder: '', format: 'YYYY-MM-DD', template: '' }, entry, 'titleDate', now))
+    expect(articleNotePath({ folder: '' }, entry, 'titleDate', 'none', '投资作业本Pro', now))
       .toBe('大摩闭门会核心判断：现在既不是2021，也不是924 特别关注 - 2026-09-09.md');
 
-    // title
-    expect(articleNotePath({ folder: 'Notes', format: 'YYYY-MM-DD', template: '' }, entry, 'title', now))
-      .toBe('Notes/大摩闭门会核心判断：现在既不是2021，也不是924 特别关注.md');
-
-    // date
-    expect(articleNotePath({ folder: 'Daily', format: 'YYYY-MM-DD', template: '' }, entry, 'date', now))
+    // date only
+    expect(articleNotePath({ folder: 'Daily' }, entry, 'date', 'none', '投资作业本Pro', now))
       .toBe('Daily/2026-09-09.md');
   });
 });

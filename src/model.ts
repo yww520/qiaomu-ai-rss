@@ -59,9 +59,19 @@ export const noteNamingPatternLabels: Record<NoteNamingPattern, string> = {
   date: '仅日期（例如：2026-09-09，多篇文章合并追加到每日日记）',
 };
 
+export const noteHierarchySchema = z.enum(['source', 'date', 'sourceDate', 'none']);
+export type NoteHierarchy = z.infer<typeof noteHierarchySchema>;
+export const noteHierarchyLabels: Record<NoteHierarchy, string> = {
+  source: '按来源/公众号归类（默认推荐，例如：notes/公众号名称/文章.md）',
+  date: '按月份归类（例如：notes/2026-09/文章.md）',
+  sourceDate: '按来源与月份归类（例如：notes/公众号名称/2026-09/文章.md）',
+  none: '直接平铺在笔记目录（例如：notes/文章.md）',
+};
+
 export const stateSchema = z.object({
   settings: z.object({
     baseUrl: z.string().default('https://rss.qiaomu.ai'), folder: z.string().default('Qiaomu RSS'),
+    noteFolder: z.string().default('Qiaomu RSS/notes'),
     defaultMode: modeSchema.default('rewrite'), remoteImages: z.boolean().default(true), listWidth: z.number().min(220).max(520).default(300),
     fontSize: z.number().int().min(14).max(32).default(19), customFont: z.string().max(200).catch('').default(''), fontFamily: readingFontSchema.default('fangsong'),
     lineHeight: z.number().min(1.5).max(2.4).default(1.9), lineWidth: z.union([z.literal(28), z.literal(36), z.literal(44)]).default(36),
@@ -74,11 +84,12 @@ export const stateSchema = z.object({
     aiModel: z.string().default('deepseek-chat'),
     aiPrompt: z.string().default(''),
     noteNamingPattern: noteNamingPatternSchema.default('dateTitle'),
-  }).default({ baseUrl: 'https://rss.qiaomu.ai', folder: 'Qiaomu RSS', defaultMode: 'rewrite', remoteImages: true, listWidth: 300,
+    noteHierarchy: noteHierarchySchema.default('source'),
+  }).default({ baseUrl: 'https://rss.qiaomu.ai', folder: 'Qiaomu RSS', noteFolder: 'Qiaomu RSS/notes', defaultMode: 'rewrite', remoteImages: true, listWidth: 300,
     fontSize: 19, fontFamily: 'fangsong', customFont: '', lineHeight: 1.9, lineWidth: 36, lastSource: '', selectionPopup: true, markdownFolders: [],
     weMpServerUrl: 'http://43.156.114.156:8001', weMpToken: '',
     aiApiUrl: 'https://api.deepseek.com/v1', aiApiKey: '', aiModel: 'deepseek-chat', aiPrompt: '',
-    noteNamingPattern: 'dateTitle' }),
+    noteNamingPattern: 'dateTitle', noteHierarchy: 'source' }),
   readIds: z.array(z.string()).default([]), favorites: z.record(z.string(), bundleSchema).default({}),
   entries: z.array(entrySchema).default([]), sources: z.array(sourceSchema).default([]),
   subscriptions: z.array(subscriptionSchema).default([]),

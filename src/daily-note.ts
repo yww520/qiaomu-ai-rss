@@ -38,14 +38,19 @@ export function sanitizeFilename(name: string): string {
 }
 
 export function articleNotePath(
-  settings: DailyNoteSettings,
+  settings: { folder?: string; format?: string },
   entry: Entry,
   pattern: import('./model').NoteNamingPattern = 'dateTitle',
+  hierarchy: import('./model').NoteHierarchy = 'source',
+  sourceName = '未分类',
   now: DateFormatter = currentMoment()
 ): string {
-  const dated = cleanPath(now.format(settings.format)) || now.format('YYYY-MM-DD');
+  const format = settings.format || 'YYYY-MM-DD';
+  const dated = cleanPath(now.format(format)) || now.format('YYYY-MM-DD');
+  const monthStr = now.format('YYYY-MM') || dated.slice(0, 7);
   const rawTitle = titleOf(entry).replace(/\s+/g, ' ').trim();
   const title = sanitizeFilename(rawTitle) || '未命名文章';
+  const safeSource = sanitizeFilename(sourceName.replace(/\s+/g, ' ').trim()) || '未分类';
 
   let filename = '';
   switch (pattern) {
@@ -65,7 +70,27 @@ export function articleNotePath(
       filename = `${dated} - ${title}`;
   }
 
-  return normalizePath(`${settings.folder ? `${settings.folder}/` : ''}${filename}.md`);
+  let subfolder = '';
+  switch (hierarchy) {
+    case 'source':
+      subfolder = safeSource;
+      break;
+    case 'date':
+      subfolder = monthStr;
+      break;
+    case 'sourceDate':
+      subfolder = `${safeSource}/${monthStr}`;
+      break;
+    case 'none':
+      subfolder = '';
+      break;
+    default:
+      subfolder = safeSource;
+  }
+
+  const baseFolder = cleanPath(settings.folder || '');
+  const parts = [baseFolder, subfolder, `${filename}.md`].filter(Boolean);
+  return normalizePath(parts.join('/'));
 }
 
 export interface CaptureOptions { vault?: string; article?: string; mode?: Mode; excerpt?: string; rawMarkdown?: boolean }
