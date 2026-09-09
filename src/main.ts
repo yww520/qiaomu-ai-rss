@@ -290,9 +290,13 @@ tags:
 
 ---
 
-## 划线与批注
-
 `;
+
+    if (entry.aiSummary) {
+      md += `## AI 深度洞察与总结\n\n${entry.aiSummary}\n\n---\n\n`;
+    }
+
+    md += `## 划线与批注\n\n`;
 
     for (let i = 0; i < highlights.length; i++) {
       const hl = highlights[i];
@@ -447,10 +451,60 @@ class RssSettings extends PluginSettingTab {
     if (!('type' in reading) || reading.type !== 'group') return definitions;
     const excerpt = reading.items!.shift()!;
     reading.heading = '阅读';
+    const aiGroup: SettingDefinitionItem = {
+      type: 'group',
+      heading: 'AI 总结与模型配置',
+      items: [
+        {
+          name: 'API 接口地址 (Base URL)',
+          desc: '兼容 OpenAI 格式。例如 DeepSeek 官方为 https://api.deepseek.com/v1，或 Moonshot、OneAPI 等。',
+          render: setting => {
+            setting.addText(text => text.setPlaceholder('https://api.deepseek.com/v1').setValue(settings.aiApiUrl).onChange(async value => {
+              settings.aiApiUrl = value.trim();
+              await this.plugin.persist();
+            }));
+          }
+        },
+        {
+          name: 'API Key (密钥)',
+          desc: '调用大模型 API 所需的密钥，仅保存在当前库本地配置中。',
+          render: setting => {
+            setting.addText(text => {
+              text.inputEl.type = 'password';
+              text.setPlaceholder('sk-...').setValue(settings.aiApiKey).onChange(async value => {
+                settings.aiApiKey = value.trim();
+                await this.plugin.persist();
+              });
+            });
+          }
+        },
+        {
+          name: '模型名称 (Model)',
+          desc: '使用的模型标识，例如 deepseek-chat, deepseek-reasoner, gpt-4o-mini 等。',
+          render: setting => {
+            setting.addText(text => text.setPlaceholder('deepseek-chat').setValue(settings.aiModel).onChange(async value => {
+              settings.aiModel = value.trim();
+              await this.plugin.persist();
+            }));
+          }
+        },
+        {
+          name: '自定义总结 Prompt (提示词)',
+          desc: '留空使用内置高信噪比结构化总结模板（包含【核心洞察】、【关键要点】与【思考与启发】）。',
+          render: setting => {
+            setting.addTextArea(area => area.setPlaceholder('留空使用内置结构化总结 Prompt...').setValue(settings.aiPrompt).onChange(async value => {
+              settings.aiPrompt = value.trim();
+              await this.plugin.persist();
+            }));
+          }
+        },
+      ]
+    };
     const buckets: Record<string, SettingDefinitionItem[]> = {
       '阅读': [reading, definitions[4], definitions[5]],
       '来源': [definitions[2], definitions[8], definitions[1], definitions[3]],
       '摘录': [excerpt, definitions[7]],
+      'AI 总结': [aiGroup],
       '关于': [definitions[6], ...[
         ['建议与问题反馈', 'GitHub Issues', 'https://github.com/joeseesun/qiaomu-ai-rss/issues'],
         ['使用说明', '打开说明', 'https://github.com/joeseesun/qiaomu-ai-rss#readme'],

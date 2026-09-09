@@ -10,9 +10,28 @@ import { articleFragment } from './content';
 import { canonicalEntryKey, modeLabels, modeSchema, readingFontSchema, safeUrl, titleOf, type ChannelState, type Bundle, type Entry, type Mode, type Highlight, type HighlightStyle } from './model';
 import { createHighlightId, wrapRangeWithHighlight, restoreHighlightsInContainer, removeHighlightFromContainer, updateHighlightInContainer, HighlightCard } from './highlights';
 import { WeMpClient } from './wemp-api';
+import { generateArticleSummary } from './ai-summary';
 export const VIEW_TYPE = 'qiaomu-ai-rss-reader';
 type Filter = 'all' | 'unread' | 'favorites';
 function feedHost(url: string) { try { return new URL(url).hostname; } catch { return 'RSS'; } }
+function extractBundleText(bundle: Bundle, mode: Mode): string {
+  if (bundle.entry.origin === 'vault' && bundle.entry.markdown) {
+    return bundle.entry.markdown;
+  }
+  if (mode === 'rewrite' && bundle.rewrite?.body?.trim()) {
+    return bundle.rewrite.body;
+  }
+  if (mode === 'translation' && bundle.translation?.content?.length) {
+    return bundle.translation.content.map(p => p.target || p.targetHtml || '').join('\n\n');
+  }
+  if (bundle.rewrite?.body?.trim()) {
+    return bundle.rewrite.body;
+  }
+  if (bundle.entry.content?.trim()) {
+    return bundle.entry.content.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+  return bundle.entry.summary || '';
+}
 export class ReaderView extends ItemView {
   private channelPicker?: ChannelPicker;
   private restoreObserver?: ResizeObserver;
@@ -21,6 +40,10 @@ export class ReaderView extends ItemView {
   private lastListTop = 0;
   private lastReaderTop = 0;
   private activeSwipedWrap: HTMLElement | null = null;
+  private summarizingEntryId: string | null = null;
+  private summaryError: string | null = null;
+  private summaryErrorEntryId: string | null = null;
+  private summaryCollapsed = false;
   private channelKey() { return JSON.stringify([this.plugin.state.settings.baseUrl, this.source]); }
   private closeSwipedWrap(wrap: HTMLElement) {
     const row = wrap.querySelector('.qrs-entry') as HTMLElement;
@@ -617,7 +640,8 @@ export class ReaderView extends ItemView {
     return feed?.name || entry.author || entry.sourceName || this.plugin.state.sources.find(source => source.id === entry.sourceId)?.name || entry.sourceId;
   }
   private excerpt(entry: Entry): string {
-    if (entry.summaryZh) return entry.summaryZh;
+    if (entry.summaryZh) return entry.summaryZh.replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/[*_`#]/g, '').slice(0, 160);
+    if (entry.aiSummary) return entry.aiSummary.replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/[*_`#]/g, '').slice(0, 160);
     const text = entry.rewrite?.body.split('\n\n').find(line => /[\u3400-\u9fff]/.test(line) && !line.startsWith('#') && !line.startsWith('!['));
     return (text || entry.summary || '').replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/[*_`#]/g, '').slice(0, 160);
   }
@@ -931,6 +955,25 @@ export class ReaderView extends ItemView {
     readButton.setAttribute('aria-pressed', String(read));
     this.addIconButton(actions, 'notebook-pen', '记到今日日记', () => this.noteCurrent());
 
+    // AI Summary Toolbar Button
+    const hasSummary = !!bundle.entry.aiSummary;
+    const isThisSummarizing = this.summarizingEntryId === bundle.entry.id;
+    const aiBtn = this.addIconButton(
+      actions,
+      'sparkles',
+      isThisSummarizing ? 'AI 正在提炼总结…' : hasSummary ? 'AI 总结 (已生成)' : '生成 AI 总结',
+      () => {
+        if (hasSummary && this.summaryCollapsed) {
+          this.summaryCollapsed = false;
+          this.renderReader(false);
+        } else {
+          void this.triggerAiSummary(bundle, hasSummary);
+        }
+      }
+    );
+    if (isThisSummarizing) aiBtn.addClass('is-loading');
+    if (hasSummary) aiBtn.addClass('has-summary');
+
     // Reading Notes & Export
     const notesCount = this.getHighlights().length;
     const notesBtn = actions.createEl('button', {
@@ -993,6 +1036,7 @@ export class ReaderView extends ItemView {
     const article = this.reader.createEl('article', { cls: 'qrs-article' });
     article.createEl('h1', { text: titleOf(bundle.entry) });
     if (this.message) article.createDiv({ cls: 'qrs-feedback', text: this.message, attr: { role: 'status' } });
+    this.renderAiSummarySection(article, bundle);
     try {
       if (bundle.entry.origin === 'vault' && bundle.entry.markdown != null) {
         const prose = article.createDiv('qrs-prose');
@@ -1016,6 +1060,174 @@ export class ReaderView extends ItemView {
       }
     } catch { article.createDiv({ cls: 'qrs-empty', text: '正文无法显示，请打开原文阅读。' }); }
     this.reader.scrollTop = scroll; this.restoreOffsets();
+  }
+
+  private async triggerAiSummary(bundle: Bundle | null = this.bundle, force = false) {
+    if (!bundle) return;
+    const settings = this.plugin.state.settings;
+    if (!settings.aiApiKey) {
+      new Notice('请先在插件设置「AI 总结」中配置 API Key。', 4000);
+      this.plugin.openSettings();
+      return;
+    }
+
+    if (!force && bundle.entry.aiSummary && this.summarizingEntryId !== bundle.entry.id) {
+      return;
+    }
+
+    const title = titleOf(bundle.entry);
+    const content = extractBundleText(bundle, this.mode);
+    if (!content || content.length < 20) {
+      new Notice('文章正文内容过少，无法生成 AI 总结。');
+      return;
+    }
+
+    this.summarizingEntryId = bundle.entry.id;
+    this.summaryError = null;
+    this.summaryErrorEntryId = null;
+    this.summaryCollapsed = false;
+    this.renderReader(false);
+
+    try {
+      const summary = await generateArticleSummary(
+        title,
+        content,
+        {
+          apiUrl: settings.aiApiUrl,
+          apiKey: settings.aiApiKey,
+          model: settings.aiModel,
+          prompt: settings.aiPrompt,
+        }
+      );
+
+      bundle.entry.aiSummary = summary;
+      this.plugin.remember(bundle);
+
+      for (const sub of this.plugin.state.subscriptions) {
+        const item = sub.entries.find(e => e.id === bundle.entry.id);
+        if (item) item.aiSummary = summary;
+      }
+      await this.plugin.persist();
+      new Notice('✨ AI 深度总结生成完成！');
+    } catch (err) {
+      this.summaryError = err instanceof Error ? err.message : String(err);
+      this.summaryErrorEntryId = bundle.entry.id;
+      new Notice(`AI 总结失败: ${this.summaryError}`, 5000);
+    } finally {
+      this.summarizingEntryId = null;
+      this.renderReader(false);
+    }
+  }
+
+  private copySummary(bundle: Bundle) {
+    if (!bundle.entry.aiSummary) return;
+    const text = `【${titleOf(bundle.entry)}】AI 深度总结\n\n${bundle.entry.aiSummary}\n\n原文链接：${bundle.entry.link || ''}`;
+    void navigator.clipboard.writeText(text).then(() => {
+      new Notice('AI 总结已复制到剪贴板。');
+    }).catch(() => {
+      new Notice('复制失败，请手动选择复制。');
+    });
+  }
+
+  private async noteSummary(bundle: Bundle) {
+    if (!bundle.entry.aiSummary) return;
+    try {
+      const excerpt = `> 🤖 **AI 深度洞察与总结**：\n\n${bundle.entry.aiSummary}\n\n`;
+      const result = await this.plugin.appendToDailyNote(bundle.entry, excerpt, this.mode);
+      new Notice(result.added ? '已追加 AI 总结到今日日记。' : '今日日记中已记录本篇。');
+    } catch (err) {
+      new Notice(err instanceof Error ? err.message : '写入今日日记失败。');
+    }
+  }
+
+  private renderAiSummarySection(article: HTMLElement, bundle: Bundle) {
+    const isSummarizing = this.summarizingEntryId === bundle.entry.id;
+    const hasError = this.summaryError && this.summaryErrorEntryId === bundle.entry.id;
+    const hasSummary = !!bundle.entry.aiSummary;
+
+    if (isSummarizing) {
+      const card = article.createDiv({ cls: 'qrs-ai-summary-card is-loading' });
+      const header = card.createDiv('qrs-ai-card-header');
+      const titleWrap = header.createDiv('qrs-ai-card-title');
+      setIcon(titleWrap.createSpan('qrs-ai-icon'), 'sparkles');
+      titleWrap.createSpan({ text: 'AI 深度总结' });
+      titleWrap.createSpan({ cls: 'qrs-ai-model-tag', text: this.plugin.state.settings.aiModel || 'deepseek' });
+
+      const loadingEl = card.createDiv('qrs-ai-loading-indicator');
+      const spinner = loadingEl.createSpan('qrs-ai-spinner');
+      setIcon(spinner, 'loader-2');
+      loadingEl.createSpan({ text: '正在深入研读文章并提炼核心洞察与要点…' });
+      return;
+    }
+
+    if (hasError) {
+      const card = article.createDiv({ cls: 'qrs-ai-summary-card is-error' });
+      const header = card.createDiv('qrs-ai-card-header');
+      const titleWrap = header.createDiv('qrs-ai-card-title');
+      setIcon(titleWrap.createSpan('qrs-ai-icon'), 'alert-circle');
+      titleWrap.createSpan({ text: 'AI 总结生成失败' });
+
+      card.createDiv({ cls: 'qrs-ai-error-msg', text: this.summaryError || '未知错误' });
+      const actions = card.createDiv('qrs-ai-error-actions');
+      const retryBtn = actions.createEl('button', { cls: 'qrs-ai-btn', text: '重新尝试' });
+      retryBtn.onclick = () => void this.triggerAiSummary(bundle, true);
+      return;
+    }
+
+    if (hasSummary) {
+      const card = article.createDiv({ cls: 'qrs-ai-summary-card' });
+      const header = card.createDiv('qrs-ai-card-header');
+      const titleWrap = header.createDiv('qrs-ai-card-title');
+      setIcon(titleWrap.createSpan('qrs-ai-icon'), 'sparkles');
+      titleWrap.createSpan({ text: 'AI 深度总结' });
+      titleWrap.createSpan({ cls: 'qrs-ai-model-tag', text: this.plugin.state.settings.aiModel || 'deepseek' });
+
+      const btnGroup = header.createDiv('qrs-ai-card-actions');
+
+      const toggleBtn = btnGroup.createEl('button', {
+        cls: 'qrs-ai-card-btn',
+        attr: { 'data-qrs-label': this.summaryCollapsed ? '展开总结' : '收起总结' },
+      });
+      setIcon(toggleBtn, this.summaryCollapsed ? 'chevron-down' : 'chevron-up');
+      toggleBtn.onclick = () => {
+        this.summaryCollapsed = !this.summaryCollapsed;
+        this.renderReader(false);
+      };
+
+      const copyBtn = btnGroup.createEl('button', {
+        cls: 'qrs-ai-card-btn',
+        attr: { 'data-qrs-label': '复制总结' },
+      });
+      setIcon(copyBtn, 'copy');
+      copyBtn.onclick = () => this.copySummary(bundle);
+
+      const noteBtn = btnGroup.createEl('button', {
+        cls: 'qrs-ai-card-btn',
+        attr: { 'data-qrs-label': '追加到今日日记' },
+      });
+      setIcon(noteBtn, 'notebook-pen');
+      noteBtn.onclick = () => void this.noteSummary(bundle);
+
+      const regenBtn = btnGroup.createEl('button', {
+        cls: 'qrs-ai-card-btn',
+        attr: { 'data-qrs-label': '重新生成' },
+      });
+      setIcon(regenBtn, 'refresh-cw');
+      regenBtn.onclick = () => void this.triggerAiSummary(bundle, true);
+
+      if (!this.summaryCollapsed) {
+        const body = card.createDiv('qrs-ai-card-body');
+        void MarkdownRenderer.render(this.app, bundle.entry.aiSummary!, body, '', this);
+      }
+      return;
+    }
+
+    // No summary yet: show prompt bar
+    const promptBar = article.createDiv('qrs-ai-prompt-bar');
+    const genBtn = promptBar.createEl('button', { cls: 'qrs-ai-prompt-btn' });
+    setIcon(genBtn.createSpan('qrs-ai-icon'), 'sparkles');
+    genBtn.createSpan({ text: '生成本篇 AI 深度总结' });
+    genBtn.onclick = () => void this.triggerAiSummary(bundle, true);
   }
 
   private setupHighlightsInProse(prose: HTMLElement) {
