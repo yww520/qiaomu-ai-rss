@@ -37,6 +37,15 @@ describe('untrusted remote content', () => {
     expect(fragment.textContent).toContain('<script>literal text</script>');
     expect(articleFragment({ ...bundle, rewrite: null }, 'rewrite', document, false)).toBeNull();
   });
+  it('converts section wrappers and leaf elements into distinct paragraph breaks', () => {
+    const value = structuredClone(bundle);
+    value.entry.content = '<section data-layout-id="1"><span>第一段内容</span></section><section data-layout-id="2"><span>第二段内容</span></section>';
+    const fragment = articleFragment(value, 'original', document, false)!;
+    const ps = fragment.querySelectorAll('p');
+    expect(ps.length).toBe(2);
+    expect(ps[0].textContent).toBe('第一段内容');
+    expect(ps[1].textContent).toBe('第二段内容');
+  });
   it('appends only a linked title to a daily note and avoids duplicates', () => {
     const entry = { ...bundle.entry, title: 'Plain title' };
     expect(dailyNoteLink(entry)).toBe('[Plain title](<https://example.com/news>)');

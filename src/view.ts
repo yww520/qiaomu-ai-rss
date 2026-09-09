@@ -28,7 +28,13 @@ function extractBundleText(bundle: Bundle, mode: Mode): string {
     return bundle.rewrite.body;
   }
   if (bundle.entry.content?.trim()) {
-    return bundle.entry.content.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+    return bundle.entry.content
+      .replace(/<\/(?:p|section|article|div|h[1-6]|li)>/gi, '\n\n')
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
   }
   return bundle.entry.summary || '';
 }

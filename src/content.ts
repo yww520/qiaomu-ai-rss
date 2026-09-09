@@ -1,7 +1,14 @@
 import createDOMPurify from 'dompurify';
 import { marked } from 'marked';
 import { safeUrl, type Bundle, type Mode } from './model';
-const tags = ['p', 'br', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'strong', 'em', 'b', 'i', 's', 'del', 'ul', 'ol', 'li', 'blockquote', 'pre', 'code', 'a', 'img', 'hr', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'figure', 'figcaption', 'div', 'span', 'sup', 'sub', 'mark'];
+const tags = [
+  'p', 'br', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+  'strong', 'em', 'b', 'i', 's', 'del', 'ul', 'ol', 'li',
+  'blockquote', 'pre', 'code', 'a', 'img', 'hr',
+  'table', 'thead', 'tbody', 'tr', 'th', 'td',
+  'figure', 'figcaption', 'div', 'span', 'sup', 'sub', 'mark',
+  'section', 'article', 'aside', 'header', 'footer'
+];
 export function articleFragment(bundle: Bundle, mode: Mode, doc: Document, images: boolean): DocumentFragment | null {
   let html: string;
   if (mode === 'rewrite') {
@@ -24,6 +31,24 @@ export function articleFragment(bundle: Bundle, mode: Mode, doc: Document, image
     RETURN_DOM_FRAGMENT: true, ALLOWED_TAGS: images ? tags : tags.filter(tag => tag !== 'img'),
     ALLOWED_ATTR: ['href', 'src', 'alt'], ALLOW_DATA_ATTR: false, ALLOW_ARIA_ATTR: false,
   });
+
+  // Convert leaf section, article and div elements to paragraphs so WeChat and RSS articles break into distinct paragraphs
+  const blockTags = 'section, article, p, div, table, ul, ol, blockquote, pre, h1, h2, h3, h4, h5, h6, figure';
+  for (const element of Array.from(fragment.querySelectorAll('section, article, div'))) {
+    const hasBlock = element.querySelector(blockTags);
+    if (!hasBlock && (element.textContent?.trim() || element.querySelector('img'))) {
+      const p = doc.createElement('p');
+      while (element.firstChild) p.appendChild(element.firstChild);
+      element.replaceWith(p);
+    }
+  }
+
+  // Remove empty paragraphs
+  for (const p of Array.from(fragment.querySelectorAll('p'))) {
+    if (!p.textContent?.trim() && !p.querySelector('img, hr, br')) {
+      p.remove();
+    }
+  }
   for (const element of fragment.querySelectorAll('a, img')) {
     const attr = element.tagName === 'A' ? 'href' : 'src';
     const raw = element.getAttribute(attr);
