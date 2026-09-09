@@ -354,6 +354,20 @@ export class WeMpClient {
     }
   }
 
+  async refreshArticle(articleId: string): Promise<{ ok: boolean; message: string }> {
+    try {
+      const headers = await this.getHeaders();
+      const url = `${this.baseUrl}/api/v1/wx/articles/${encodeURIComponent(articleId)}/refresh`;
+      const res = await requestUrl({ url, method: 'POST', headers, throw: false });
+      if (res.status >= 200 && res.status < 300) {
+        return { ok: true, message: '已触发云端正文补抓' };
+      }
+      return { ok: false, message: `触发补抓失败 (HTTP ${res.status})` };
+    } catch (e) {
+      return { ok: false, message: e instanceof Error ? e.message : String(e) };
+    }
+  }
+
   async importArticle(articleUrl: string): Promise<{ ok: boolean; message: string; feedUrl: string; title?: string }> {
     try {
       const headers = await this.getHeaders();

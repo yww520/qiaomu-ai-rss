@@ -605,6 +605,16 @@ export class ReaderView extends ItemView {
         });
         if (this.closed || version !== this.listVersion) return;
         this.entries = this.localEntries(); this.hasMore = false;
+        if (this.bundle) {
+          const updated = this.entries.find(e => e.id === this.bundle?.entry.id);
+          if (updated && updated.content !== this.bundle.entry.content) {
+            this.bundle.entry = updated;
+            if (this.plugin.state.cache[updated.id]) {
+              this.plugin.state.cache[updated.id].entry = updated;
+            }
+            this.renderReader(true);
+          }
+        }
         const failed = feeds.filter(feed => feed.error).length;
         this.status.setText(failed ? `${failed} 个订阅刷新失败，保留已有文章。可在订阅管理中查看详情。` : '');
         return;
@@ -861,6 +871,65 @@ export class ReaderView extends ItemView {
       new Notice(result.added ? `已保存至文章笔记：${result.file.basename}` : `笔记中已有该内容：${result.file.basename}`);
     });
   }
+  private async refreshCurrentArticle() {
+    const bundle = this.bundle;
+    if (!bundle) return;
+    const entry = bundle.entry;
+    new Notice('正在从服务器同步本篇正文…');
+    this.articleLoading = true;
+    this.reader.setAttribute('aria-busy', 'true');
+    this.renderReader(true);
+
+    try {
+      if (entry.origin === 'local') {
+        const feed = this.plugin.state.subscriptions.find(f => f.id === entry.sourceId);
+        if (feed) {
+          const match = feed.url.match(/\/feed\/(?:MP_WXS_)?([0-9A-Za-z_-]+)\.xml/);
+          const linkMatch = entry.link?.match(/mp\.weixin\.qq\.com\/s\/([A-Za-z0-9_-]+)/);
+          if (match && linkMatch) {
+            const mpId = match[1].replace(/^MP_WXS_/, '');
+            const token = linkMatch[1];
+            const articleId = `${mpId}-${mpId}_${token}`;
+            const settings = this.plugin.state.settings;
+            const client = new WeMpClient(() => settings.weMpServerUrl, () => settings.weMpToken);
+            await client.refreshArticle(articleId).catch(() => undefined);
+          }
+          await this.plugin.subscriptions.refresh([feed.id], this.reader.ownerDocument, true);
+          const updated = feed.entries.find(e => e.id === entry.id);
+          if (updated && this.bundle) {
+            this.bundle.entry = updated;
+            if (this.plugin.state.cache[updated.id]) {
+              this.plugin.state.cache[updated.id].entry = updated;
+            }
+            if (updated.content && !updated.content.includes('订阅源没有提供正文')) {
+              new Notice('正文拉取成功！');
+            } else {
+              new Notice('服务端正在同步中，请稍候几秒后再次点击');
+            }
+          }
+        }
+      } else if (entry.origin === 'vault') {
+        const refreshed = await this.plugin.vaultSources.article(entry);
+        this.bundle = refreshed;
+        new Notice('本地文章已重新加载');
+      } else {
+        const { bundle: refreshed } = await this.plugin.api().article(entry.id);
+        this.bundle = refreshed;
+        new Notice('文章已重新加载');
+      }
+      if (this.bundle) {
+        this.plugin.remember(this.bundle);
+        await this.plugin.persist();
+      }
+    } catch (e) {
+      new Notice(`拉取失败: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      this.articleLoading = false;
+      this.reader.setAttribute('aria-busy', 'false');
+      this.renderReader();
+      this.renderList();
+    }
+  }
   private clearImages() {
     this.markdownComponent?.unload(); this.markdownComponent = undefined;
     this.renderVersion++; this.imageObserver?.disconnect(); this.imageObserver = undefined;
@@ -960,6 +1029,7 @@ export class ReaderView extends ItemView {
     }));
     readButton.setAttribute('aria-pressed', String(read));
     this.addIconButton(actions, 'notebook-pen', '记入文章笔记', () => this.noteCurrent());
+    this.addIconButton(actions, 'refresh-cw', '重新拉取正文', () => void this.refreshCurrentArticle());
 
     // AI Summary Toolbar Button
     const hasSummary = !!bundle.entry.aiSummary;
@@ -1033,7 +1103,7 @@ export class ReaderView extends ItemView {
         void this.app.workspace.openLinkText(bundle.entry.markdownPath!, '', true);
       }));
       if (link) menu.addItem(item => item.setTitle('在浏览器打开原文').setIcon('external-link').onClick(() => { this.contentEl.win.open(link, '_blank', 'noopener,noreferrer'); }));
-      menu.addItem(item => item.setTitle('重新加载文章').setIcon('refresh-cw').onClick(() => { void this.openArticle(bundle.entry); }));
+      menu.addItem(item => item.setTitle('重新拉取本篇正文').setIcon('refresh-cw').onClick(() => { void this.refreshCurrentArticle(); }));
       menu.addItem(item => item.setTitle('选择频道').setIcon('rss').onClick(() => this.pickChannel()));
       const rect = more.getBoundingClientRect(); menu.showAtPosition({ x: rect.left, y: rect.bottom });
     });
@@ -1059,6 +1129,21 @@ export class ReaderView extends ItemView {
           this.prepareImages(fragment);
           const prose = article.createDiv('qrs-prose');
           prose.append(fragment);
+          if (bundle.entry.content?.includes('订阅源没有提供正文')) {
+            const box = prose.createDiv('qrs-missing-content-card');
+            box.createEl('div', { cls: 'qrs-missing-content-icon', text: '💡' });
+            const info = box.createDiv('qrs-missing-content-info');
+            info.createEl('strong', { text: '微信公众号正文同步提示' });
+            info.createEl('p', { text: '公众号文章首次被发现时，微信服务器的正文内容可能仍在后台同步下载中。若在浏览器打开原文已有内容，请点击下方按钮重新同步正文。' });
+            const btnRow = info.createDiv('qrs-missing-content-actions');
+            const fetchBtn = btnRow.createEl('button', { cls: 'mod-cta', text: '🔄 重新拉取本篇正文' });
+            fetchBtn.onclick = () => void this.refreshCurrentArticle();
+            if (bundle.entry.link) {
+              const linkBtn = btnRow.createEl('a', { cls: 'qrs-open-link-btn', text: '↗ 在浏览器打开原文', href: bundle.entry.link });
+              linkBtn.setAttribute('target', '_blank');
+              linkBtn.setAttribute('rel', 'noopener noreferrer');
+            }
+          }
           this.setupHighlightsInProse(prose);
         } else {
           article.createDiv({ cls: 'qrs-empty', text: this.articleLoading ? '正在获取正文…' : `${modeLabels[this.mode]}暂无正文。可以切换版本，或从“更多”中打开原文。` });

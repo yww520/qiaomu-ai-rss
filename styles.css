@@ -684,3 +684,51 @@
   cursor: pointer;
 }
 
+.qrs-missing-content-card {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 16px;
+  margin: 20px 0;
+  border-radius: 8px;
+  background: var(--background-secondary);
+  border: 1px dashed var(--background-modifier-border);
+}
+.qrs-missing-content-icon {
+  font-size: 24px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.qrs-missing-content-info strong {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 14px;
+  color: var(--text-normal);
+}
+.qrs-missing-content-info p {
+  margin: 0 0 12px !important;
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+.qrs-missing-content-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.qrs-missing-content-actions button {
+  font-size: 13px;
+  padding: 5px 14px;
+  cursor: pointer;
+}
+.qrs-open-link-btn {
+  font-size: 13px;
+  color: var(--text-accent);
+  text-decoration: none;
+  padding: 4px 8px;
+}
+.qrs-open-link-btn:hover {
+  text-decoration: underline;
+}
+
+
