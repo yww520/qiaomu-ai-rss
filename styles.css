@@ -36,6 +36,15 @@
 .qrs-timeline-header:hover {
   background: var(--background-modifier-hover);
 }
+.qrs-timeline-header * {
+  pointer-events: none;
+}
+.qrs-timeline-header.is-collapsed {
+  opacity: 0.85;
+}
+.qrs-timeline-header.is-collapsed:hover {
+  opacity: 1;
+}
 .qrs-timeline-header-left {
   display: flex;
   align-items: center;

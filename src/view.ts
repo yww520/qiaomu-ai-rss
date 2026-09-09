@@ -844,11 +844,6 @@ export class ReaderView extends ItemView {
       return;
     }
 
-    if (this.bundle) {
-      const activeGroup = getTimelineGroup(this.bundle.entry);
-      this.collapsedTimelineGroups.delete(activeGroup.key);
-    }
-
     const now = new Date();
     const groupMap = new Map<string, { group: TimelineGroup; entries: Entry[] }>();
     for (const entry of entries) {
@@ -906,6 +901,7 @@ export class ReaderView extends ItemView {
   }
   private async openArticle(entry: Entry, resume?: ChannelState) {
     this.stopRestoring();
+    this.collapsedTimelineGroups.delete(getTimelineGroup(entry).key);
     // Keep this unread reading session navigable after opening marks entries read.
     if (this.filter === 'unread') this.unreadSession.add(entry.id);
     const version = ++this.articleVersion; const state = this.plugin.state;
@@ -932,6 +928,7 @@ export class ReaderView extends ItemView {
   }
   showSavedArticle(bundle: Bundle, mode: Mode) {
     this.stopRestoring();
+    this.collapsedTimelineGroups.delete(getTimelineGroup(bundle.entry).key);
     this.articleVersion++; this.articleLoading = false;
     this.bundle = bundle; this.mode = mode; this.message = '';
     this.reader.setAttribute('aria-busy', 'false'); this.contentEl.addClass('qrs-has-article');
