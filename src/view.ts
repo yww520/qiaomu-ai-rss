@@ -12,6 +12,7 @@ import { createHighlightId, wrapRangeWithHighlight, restoreHighlightsInContainer
 import { WeMpClient } from './wemp-api';
 import { generateArticleSummary } from './ai-summary';
 import { getTimelineGroup, type TimelineGroup } from './timeline';
+import { fetchWeChatArticleDirect } from './wechat-fetcher';
 export const VIEW_TYPE = 'qiaomu-ai-rss-reader';
 type Filter = 'all' | 'unread' | 'favorites';
 function feedHost(url: string) { try { return new URL(url).hostname; } catch { return 'RSS'; } }
@@ -913,7 +914,30 @@ export class ReaderView extends ItemView {
     if (entry.origin === 'local') {
       this.bundle = { entry, rewrite: null, translation: null, fetchedAt: Date.now() };
       this.plugin.remember(this.bundle); this.run(() => this.plugin.persist());
-      this.articleLoading = false; this.reader.setAttribute('aria-busy', 'false'); this.renderReader(); return;
+      this.articleLoading = false; this.reader.setAttribute('aria-busy', 'false'); this.renderReader();
+
+      // If WeChat article is missing body content, auto-fetch full rich text in background
+      const link = entry.link;
+      if (link && link.includes('mp.weixin.qq.com/s/') && (!entry.content || entry.content.includes('订阅源没有提供正文'))) {
+        void (async () => {
+          const direct = await fetchWeChatArticleDirect(link);
+          if (direct && direct.length > 20 && !this.closed && this.articleVersion === version) {
+            entry.content = direct;
+            if (this.bundle) {
+              this.bundle.entry.content = direct;
+              this.plugin.remember(this.bundle);
+            }
+            const feed = this.plugin.state.subscriptions.find(f => f.id === entry.sourceId);
+            if (feed) {
+              const matched = feed.entries.find(e => e.id === entry.id);
+              if (matched) matched.content = direct;
+            }
+            this.run(() => this.plugin.persist());
+            this.renderReader();
+          }
+        })();
+      }
+      return;
     }
     try {
       const { bundle, warnings } = entry.origin === 'vault' ? { bundle: await this.plugin.vaultSources.article(entry), warnings: [] } : await this.plugin.api().article(entry.id);
@@ -954,16 +978,35 @@ export class ReaderView extends ItemView {
     try {
       if (entry.origin === 'local') {
         const feed = this.plugin.state.subscriptions.find(f => f.id === entry.sourceId);
-        if (feed) {
+        let directSuccess = false;
+
+        // Try direct WeChat extraction first if it is a WeChat link
+        const directLink = entry.link;
+        if (directLink && directLink.includes('mp.weixin.qq.com/s/')) {
+          const directContent = await fetchWeChatArticleDirect(directLink);
+          if (directContent && directContent.length > 20) {
+            entry.content = directContent;
+            if (feed) {
+              const matched = feed.entries.find(e => e.id === entry.id);
+              if (matched) matched.content = directContent;
+            }
+            if (this.bundle) this.bundle.entry.content = directContent;
+            directSuccess = true;
+            new Notice('正文同步成功！');
+          }
+        }
+
+        if (!directSuccess && feed) {
           const match = feed.url.match(/\/feed\/(?:MP_WXS_)?([0-9A-Za-z_-]+)\.xml/);
           const linkMatch = entry.link?.match(/mp\.weixin\.qq\.com\/s\/([A-Za-z0-9_-]+)/);
           if (match && linkMatch) {
             const mpId = match[1].replace(/^MP_WXS_/, '');
             const token = linkMatch[1];
             const articleId = `${mpId}-${mpId}_${token}`;
+            const articleIdTilde = `${mpId}-${mpId}_${token.replace(/_/g, '~')}`;
             const settings = this.plugin.state.settings;
             const client = new WeMpClient(() => settings.weMpServerUrl, () => settings.weMpToken);
-            await client.refreshArticle(articleId).catch(() => undefined);
+            await client.refreshArticle(articleIdTilde).catch(() => client.refreshArticle(articleId).catch(() => undefined));
           }
           await this.plugin.subscriptions.refresh([feed.id], this.reader.ownerDocument, true);
           const updated = feed.entries.find(e => e.id === entry.id);

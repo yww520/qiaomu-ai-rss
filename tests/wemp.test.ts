@@ -37,3 +37,40 @@ describe('WeMpClient', () => {
   });
 });
 
+describe('parseWeChatHtml', () => {
+  it('extracts regular article content from js_content container', async () => {
+    const { parseWeChatHtml } = await import('../src/wechat-fetcher');
+    const html = '<div id="js_content"><p>这是微信公众号文章正文第一段，内容详实且丰富。</p><p>这是第二段正文。</p></div><div id="js_like_educate"></div>';
+    const parsed = parseWeChatHtml(html);
+    expect(parsed).toContain('这是微信公众号文章正文第一段');
+    expect(parsed).toContain('这是第二段正文');
+  });
+
+  it('extracts picture and text note (小绿书) from text_page_info and picture_page_info_list', async () => {
+    const { parseWeChatHtml } = await import('../src/wechat-fetcher');
+    const html = `
+      var someData = {
+        picture_page_info_list: [
+          { cdn_url: 'https://mmbiz.qpic.cn/image1.jpg' }
+        ],
+        text_page_info: {
+          content: '投资中不要做的事\\x0a\\x0a1、给亏损分类，找到你不赚钱的习惯\\\\\\n\\\\\\n2、别因为卖掉了赢家，就以为自己锁定了收益',
+          content_noencode: '...'
+        }
+      };
+    `;
+    const parsed = parseWeChatHtml(html);
+    expect(parsed).toContain('<img src="https://mmbiz.qpic.cn/image1.jpg"');
+    expect(parsed).toContain('<p>投资中不要做的事</p>');
+    expect(parsed).toContain('<p>1、给亏损分类，找到你不赚钱的习惯</p>');
+    expect(parsed).toContain('<p>2、别因为卖掉了赢家，就以为自己锁定了收益</p>');
+  });
+
+  it('identifies audio podcast episodes', async () => {
+    const { parseWeChatHtml } = await import('../src/wechat-fetcher');
+    const html = '<div>voice_in_appmsg: [{ voice_id: "123" }]</div>';
+    const parsed = parseWeChatHtml(html);
+    expect(parsed).toContain('微信原生音频/播客节目');
+  });
+});
+
