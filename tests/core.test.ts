@@ -2,6 +2,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { RssApi } from '../src/api';
 import { articleFragment } from '../src/content';
+import { getTimelineGroup } from '../src/timeline';
 import { articleNoteUrl, appendDailyNoteLink, articleNotePath, dailyNoteLink, dailyNotePath, renderDailyNoteTemplate, sanitizeFilename } from '../src/daily-note';
 import { canonicalEntryKey, deduplicateEntriesList, folderPath, initialState, withServiceOrigin, safeUrl, serviceUrl, type Bundle, type Entry } from '../src/model';
 const bundle: Bundle = {
@@ -45,6 +46,17 @@ describe('untrusted remote content', () => {
     expect(ps.length).toBe(2);
     expect(ps[0].textContent).toBe('第一段内容');
     expect(ps[1].textContent).toBe('第二段内容');
+  });
+  it('correctly calculates timeline groups for today, yesterday, this week, last week and older', () => {
+    const now = new Date(2026, 8, 23, 12, 0, 0); // Wednesday 2026-09-23
+    expect(getTimelineGroup({ publishedTs: new Date(2026, 8, 23, 8, 0, 0).getTime() }, now)).toMatchObject({ key: 'today', label: '今天' });
+    expect(getTimelineGroup({ publishedTs: new Date(2026, 8, 22, 18, 0, 0).getTime() }, now)).toMatchObject({ key: 'yesterday', label: '昨天' });
+    expect(getTimelineGroup({ publishedTs: new Date(2026, 8, 21, 10, 0, 0).getTime() }, now)).toMatchObject({ key: 'this_week', label: '本周' });
+    expect(getTimelineGroup({ publishedTs: new Date(2026, 8, 16, 10, 0, 0).getTime() }, now)).toMatchObject({ key: 'last_week', label: '上周' });
+    expect(getTimelineGroup({ publishedTs: new Date(2026, 8, 1, 10, 0, 0).getTime() }, now)).toMatchObject({ key: 'this_month_earlier', label: '本月更早' });
+    expect(getTimelineGroup({ publishedTs: new Date(2026, 7, 20, 10, 0, 0).getTime() }, now)).toMatchObject({ label: '8月' });
+    expect(getTimelineGroup({ publishedTs: new Date(2025, 11, 20, 10, 0, 0).getTime() }, now)).toMatchObject({ label: '2025年' });
+    expect(getTimelineGroup({ publishedTs: null, published: null }, now)).toMatchObject({ key: 'unknown', label: '更早' });
   });
   it('appends only a linked title to a daily note and avoids duplicates', () => {
     const entry = { ...bundle.entry, title: 'Plain title' };

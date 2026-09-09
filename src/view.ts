@@ -11,6 +11,7 @@ import { canonicalEntryKey, modeLabels, modeSchema, readingFontSchema, safeUrl, 
 import { createHighlightId, wrapRangeWithHighlight, restoreHighlightsInContainer, removeHighlightFromContainer, updateHighlightInContainer, HighlightCard } from './highlights';
 import { WeMpClient } from './wemp-api';
 import { generateArticleSummary } from './ai-summary';
+import { getTimelineGroup, type TimelineGroup } from './timeline';
 export const VIEW_TYPE = 'qiaomu-ai-rss-reader';
 type Filter = 'all' | 'unread' | 'favorites';
 function feedHost(url: string) { try { return new URL(url).hostname; } catch { return 'RSS'; } }
@@ -38,11 +39,13 @@ function extractBundleText(bundle: Bundle, mode: Mode): string {
   }
   return bundle.entry.summary || '';
 }
+
 export class ReaderView extends ItemView {
   private channelPicker?: ChannelPicker;
   private restoreObserver?: ResizeObserver;
   private pendingScroll?: { listTop: number; readerTop: number };
   private checkpointTimer?: number;
+  private collapsedTimelineGroups = new Set<string>();
   private lastListTop = 0;
   private lastReaderTop = 0;
   private activeSwipedWrap: HTMLElement | null = null;
@@ -688,141 +691,212 @@ export class ReaderView extends ItemView {
       img.onload = () => holder.removeClass('is-loading'); img.onerror = () => holder.remove(); img.src = local;
     });
   }
+  private renderEntryRow(entry: Entry) {
+    const read = this.plugin.state.readIds.includes(entry.id);
+    const wrap = this.list.createDiv({ cls: 'qrs-entry-wrap' });
+
+    const swipeAction = wrap.createDiv({ cls: 'qrs-entry-swipe-action' });
+    const deleteBtn = swipeAction.createDiv({ cls: 'qrs-entry-delete-btn', attr: { role: 'button', 'aria-label': '删除文章' } });
+    setIcon(deleteBtn.createSpan('qrs-entry-delete-icon'), 'trash');
+    deleteBtn.createSpan({ text: '删除', cls: 'qrs-entry-delete-text' });
+
+    deleteBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      void this.deleteArticleWithAnimation(wrap, entry);
+    });
+
+    const row = wrap.createEl('button', { cls: 'qrs-entry', attr: { 'data-entry-id': entry.id } });
+    row.toggleClass('qrs-selected', this.bundle?.entry.id === entry.id);
+    row.setAttribute('aria-pressed', String(this.bundle?.entry.id === entry.id)); row.toggleClass('qrs-read', read);
+    const copy = row.createSpan('qrs-entry-copy');
+    const meta = copy.createSpan('qrs-entry-meta');
+    meta.createSpan({ text: this.sourceName(entry), cls: 'qrs-source-name' });
+    const date = entry.publishedTs ? new Date(entry.publishedTs) : entry.published ? new Date(entry.published) : null;
+    meta.createSpan({ cls: 'qrs-date', text: date && !Number.isNaN(date.getTime()) ? date.toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' }) : '' });
+    const title = copy.createDiv('qrs-entry-title');
+    title.createSpan({ cls: read ? 'qrs-read-dot' : 'qrs-unread-dot', attr: { 'aria-hidden': 'true' } });
+    title.createSpan({ cls: 'qrs-visually-hidden', text: read ? '已读' : '未读' });
+    title.createEl('h3', { text: titleOf(entry) });
+    if (this.plugin.state.favorites[entry.id]) setIcon(title.createSpan('qrs-bookmarked'), 'bookmark');
+    const summary = this.excerpt(entry); if (summary) copy.createEl('p', { text: summary, cls: 'qrs-summary' });
+    this.renderThumbnail(row, entry);
+
+    let startX = 0;
+    let startY = 0;
+    let isTracking = false;
+    let isSwiping = false;
+    let isScrolling = false;
+    let pointerId = -1;
+    let suppressClick = false;
+
+    row.addEventListener('pointerdown', (e: PointerEvent) => {
+      if (e.button !== 0) return;
+      if (this.activeSwipedWrap && this.activeSwipedWrap !== wrap) {
+        this.closeSwipedWrap(this.activeSwipedWrap);
+      }
+      startX = e.clientX;
+      startY = e.clientY;
+      isTracking = true;
+      isSwiping = false;
+      isScrolling = false;
+      pointerId = e.pointerId;
+    });
+
+    row.addEventListener('pointermove', (e: PointerEvent) => {
+      if (!isTracking || e.pointerId !== pointerId) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+
+      if (!isSwiping && !isScrolling) {
+        if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+          if (Math.abs(dx) > Math.abs(dy)) {
+            isSwiping = true;
+            row.setPointerCapture(pointerId);
+          } else {
+            isScrolling = true;
+          }
+        }
+      }
+
+      if (isSwiping) {
+        e.preventDefault();
+        const isOpen = wrap.hasClass('is-swiped-open');
+        const baseOffset = isOpen ? -72 : 0;
+        let currentOffset = baseOffset + dx;
+        if (currentOffset > 0) currentOffset = 0;
+        if (currentOffset < -90) {
+          currentOffset = -90 + (currentOffset + 90) * 0.2;
+        }
+        row.setCssProps({ '--qrs-swipe-transform': `translateX(${currentOffset}px)` });
+        if (Math.abs(dx) > 5) suppressClick = true;
+      }
+    });
+
+    const onPointerEnd = (e: PointerEvent) => {
+      if (!isTracking || e.pointerId !== pointerId) return;
+      isTracking = false;
+      if (isSwiping) {
+        try { row.releasePointerCapture(pointerId); } catch {}
+        const dx = e.clientX - startX;
+        const isOpen = wrap.hasClass('is-swiped-open');
+        if (!isOpen && dx < -36) {
+          wrap.addClass('is-swiped-open');
+          row.setCssProps({ '--qrs-swipe-transform': 'translateX(-72px)' });
+          this.activeSwipedWrap = wrap;
+        } else if (isOpen && dx > 20) {
+          this.closeSwipedWrap(wrap);
+        } else if (isOpen) {
+          row.setCssProps({ '--qrs-swipe-transform': 'translateX(-72px)' });
+        } else {
+          row.setCssProps({ '--qrs-swipe-transform': '' });
+        }
+        setTimeout(() => { suppressClick = false; }, 50);
+      } else {
+        suppressClick = false;
+        if (wrap.hasClass('is-swiped-open')) {
+          this.closeSwipedWrap(wrap);
+        }
+      }
+    };
+
+    row.addEventListener('pointerup', onPointerEnd);
+    row.addEventListener('pointercancel', onPointerEnd);
+
+    row.addEventListener('click', (e) => {
+      if (suppressClick) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      if (wrap.hasClass('is-swiped-open')) {
+        e.preventDefault();
+        e.stopPropagation();
+        this.closeSwipedWrap(wrap);
+        return;
+      }
+      void this.openArticle(entry);
+    });
+
+    row.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      const menu = new Menu();
+      menu.addItem(item => {
+        item.setTitle('删除文章')
+          .setIcon('trash')
+          .setWarning(true)
+          .onClick(() => {
+            void this.deleteArticleWithAnimation(wrap, entry);
+          });
+      });
+      menu.showAtMouseEvent(e);
+    });
+  }
+
   private renderList() {
     this.activeSwipedWrap = null;
     const restoreFocus = this.list.contains(this.contentEl.ownerDocument.activeElement);
-    const scroll = this.list.scrollTop; this.list.empty(); const entries = this.visibleEntries();
-    if (!entries.length) this.list.createDiv({ cls: 'qrs-empty', text: this.loading ? '正在获取文章…' : this.filter === 'favorites' ? '收藏喜欢的文章，在这里慢慢读。' : this.personalScope() && !this.entries.length ? '还没有文章。点击 + 添加订阅，或点击刷新获取文章。' : '暂无匹配文章，试试其他频道或筛选。' });
-    for (const entry of entries) {
-      const read = this.plugin.state.readIds.includes(entry.id);
-      const wrap = this.list.createDiv({ cls: 'qrs-entry-wrap' });
-
-      const swipeAction = wrap.createDiv({ cls: 'qrs-entry-swipe-action' });
-      const deleteBtn = swipeAction.createDiv({ cls: 'qrs-entry-delete-btn', attr: { role: 'button', 'aria-label': '删除文章' } });
-      setIcon(deleteBtn.createSpan('qrs-entry-delete-icon'), 'trash');
-      deleteBtn.createSpan({ text: '删除', cls: 'qrs-entry-delete-text' });
-
-      deleteBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        e.preventDefault();
-        void this.deleteArticleWithAnimation(wrap, entry);
-      });
-
-      const row = wrap.createEl('button', { cls: 'qrs-entry', attr: { 'data-entry-id': entry.id } });
-      row.toggleClass('qrs-selected', this.bundle?.entry.id === entry.id);
-      row.setAttribute('aria-pressed', String(this.bundle?.entry.id === entry.id)); row.toggleClass('qrs-read', read);
-      const copy = row.createSpan('qrs-entry-copy');
-      const meta = copy.createSpan('qrs-entry-meta');
-      meta.createSpan({ text: this.sourceName(entry), cls: 'qrs-source-name' });
-      const date = entry.publishedTs ? new Date(entry.publishedTs) : entry.published ? new Date(entry.published) : null;
-      meta.createSpan({ cls: 'qrs-date', text: date && !Number.isNaN(date.getTime()) ? date.toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' }) : '' });
-      const title = copy.createDiv('qrs-entry-title');
-      title.createSpan({ cls: read ? 'qrs-read-dot' : 'qrs-unread-dot', attr: { 'aria-hidden': 'true' } });
-      title.createSpan({ cls: 'qrs-visually-hidden', text: read ? '已读' : '未读' });
-      title.createEl('h3', { text: titleOf(entry) });
-      if (this.plugin.state.favorites[entry.id]) setIcon(title.createSpan('qrs-bookmarked'), 'bookmark');
-      const summary = this.excerpt(entry); if (summary) copy.createEl('p', { text: summary, cls: 'qrs-summary' });
-      this.renderThumbnail(row, entry);
-
-      let startX = 0;
-      let startY = 0;
-      let isTracking = false;
-      let isSwiping = false;
-      let isScrolling = false;
-      let pointerId = -1;
-      let suppressClick = false;
-
-      row.addEventListener('pointerdown', (e: PointerEvent) => {
-        if (e.button !== 0) return;
-        if (this.activeSwipedWrap && this.activeSwipedWrap !== wrap) {
-          this.closeSwipedWrap(this.activeSwipedWrap);
-        }
-        startX = e.clientX;
-        startY = e.clientY;
-        isTracking = true;
-        isSwiping = false;
-        isScrolling = false;
-        pointerId = e.pointerId;
-      });
-
-      row.addEventListener('pointermove', (e: PointerEvent) => {
-        if (!isTracking || e.pointerId !== pointerId) return;
-        const dx = e.clientX - startX;
-        const dy = e.clientY - startY;
-
-        if (!isSwiping && !isScrolling) {
-          if (Math.abs(dy) > 7 && Math.abs(dy) > Math.abs(dx)) {
-            isScrolling = true;
-            return;
-          }
-          if (dx > 7 && Math.abs(dx) > Math.abs(dy)) {
-            isSwiping = true;
-            try { row.setPointerCapture(pointerId); } catch { /* ignore */ }
-            row.addClass('is-dragging');
-          }
-        }
-
-        if (isSwiping) {
-          const moveX = dx <= 0 ? 0 : dx < 80 ? dx : 80 + (dx - 80) * 0.45;
-          row.setCssProps({ '--qrs-swipe-transform': `translateX(${Math.round(moveX)}px)` });
-        }
-      });
-
-      const onPointerEnd = (e: PointerEvent) => {
-        if (!isTracking || e.pointerId !== pointerId) return;
-        isTracking = false;
-        row.removeClass('is-dragging');
-        try { row.releasePointerCapture(pointerId); } catch { /* ignore */ }
-
-        if (isSwiping) {
-          const dx = e.clientX - startX;
-          suppressClick = true;
-          window.setTimeout(() => { suppressClick = false; }, 150);
-
-          if (dx >= 130) {
-            void this.deleteArticleWithAnimation(wrap, entry);
-          } else if (dx >= 45) {
-            row.setCssProps({ '--qrs-swipe-transform': 'translateX(80px)' });
-            wrap.addClass('is-swiped-open');
-            this.activeSwipedWrap = wrap;
-          } else {
-            this.closeSwipedWrap(wrap);
-          }
-        }
-      };
-
-      row.addEventListener('pointerup', onPointerEnd);
-      row.addEventListener('pointercancel', onPointerEnd);
-
-      row.addEventListener('click', (e) => {
-        if (suppressClick) {
-          e.preventDefault();
-          e.stopPropagation();
-          return;
-        }
-        if (wrap.hasClass('is-swiped-open')) {
-          e.preventDefault();
-          e.stopPropagation();
-          this.closeSwipedWrap(wrap);
-          return;
-        }
-        void this.openArticle(entry);
-      });
-
-      row.addEventListener('contextmenu', (e) => {
-        e.preventDefault();
-        const menu = new Menu();
-        menu.addItem(item => {
-          item.setTitle('删除文章')
-            .setIcon('trash')
-            .setWarning(true)
-            .onClick(() => {
-              void this.deleteArticleWithAnimation(wrap, entry);
-            });
-        });
-        menu.showAtMouseEvent(e);
-      });
+    const scroll = this.list.scrollTop;
+    this.list.empty();
+    const entries = this.visibleEntries();
+    if (!entries.length) {
+      this.list.createDiv({ cls: 'qrs-empty', text: this.loading ? '正在获取文章…' : this.filter === 'favorites' ? '收藏喜欢的文章，在这里慢慢读。' : this.personalScope() && !this.entries.length ? '还没有文章。点击 + 添加订阅，或点击刷新获取文章。' : '暂无匹配文章，试试其他频道或筛选。' });
+      return;
     }
+
+    if (this.bundle) {
+      const activeGroup = getTimelineGroup(this.bundle.entry);
+      this.collapsedTimelineGroups.delete(activeGroup.key);
+    }
+
+    const now = new Date();
+    const groupMap = new Map<string, { group: TimelineGroup; entries: Entry[] }>();
+    for (const entry of entries) {
+      const g = getTimelineGroup(entry, now);
+      if (!groupMap.has(g.key)) {
+        groupMap.set(g.key, { group: g, entries: [] });
+      }
+      groupMap.get(g.key)!.entries.push(entry);
+    }
+
+    const groups = Array.from(groupMap.values()).sort((a, b) => a.group.order - b.group.order);
+
+    for (const { group, entries: groupEntries } of groups) {
+      const isCollapsed = this.collapsedTimelineGroups.has(group.key);
+      const sectionHeader = this.list.createDiv({
+        cls: `qrs-timeline-header${isCollapsed ? ' is-collapsed' : ''}`,
+        attr: { role: 'button', 'aria-expanded': String(!isCollapsed), 'tabindex': '0' }
+      });
+      const headerLeft = sectionHeader.createDiv('qrs-timeline-header-left');
+      const arrow = headerLeft.createSpan('qrs-timeline-arrow');
+      setIcon(arrow, isCollapsed ? 'chevron-right' : 'chevron-down');
+      headerLeft.createSpan({ cls: 'qrs-timeline-label', text: group.label });
+      sectionHeader.createSpan({ cls: 'qrs-timeline-count', text: `${groupEntries.length} 篇` });
+
+      const toggleCollapse = (e: Event) => {
+        e.stopPropagation();
+        if (this.collapsedTimelineGroups.has(group.key)) {
+          this.collapsedTimelineGroups.delete(group.key);
+        } else {
+          this.collapsedTimelineGroups.add(group.key);
+        }
+        this.renderList();
+      };
+      sectionHeader.addEventListener('click', toggleCollapse);
+      sectionHeader.addEventListener('keydown', (e: KeyboardEvent) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          toggleCollapse(e);
+        }
+      });
+
+      if (!isCollapsed) {
+        for (const entry of groupEntries) {
+          this.renderEntryRow(entry);
+        }
+      }
+    }
+
     if (this.hasMore && this.filter !== 'favorites') {
       const button = this.list.createEl('button', { text: this.loading ? '加载中…' : '加载更早文章', cls: 'qrs-more' });
       button.disabled = this.loading; button.addEventListener('click', () => { void this.loadEntries(true); });
