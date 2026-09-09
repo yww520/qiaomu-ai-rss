@@ -50,6 +50,15 @@ export const highlightSchema = z.object({
 });
 export type Highlight = z.infer<typeof highlightSchema>;
 
+export const noteNamingPatternSchema = z.enum(['dateTitle', 'titleDate', 'title', 'date']);
+export type NoteNamingPattern = z.infer<typeof noteNamingPatternSchema>;
+export const noteNamingPatternLabels: Record<NoteNamingPattern, string> = {
+  dateTitle: '日期 - 原文标题（默认推荐，例如：2026-09-09 - 文章标题）',
+  titleDate: '原文标题 - 日期（例如：文章标题 - 2026-09-09）',
+  title: '仅原文标题（例如：文章标题）',
+  date: '仅日期（例如：2026-09-09，多篇文章合并追加到每日日记）',
+};
+
 export const stateSchema = z.object({
   settings: z.object({
     baseUrl: z.string().default('https://rss.qiaomu.ai'), folder: z.string().default('Qiaomu RSS'),
@@ -64,10 +73,12 @@ export const stateSchema = z.object({
     aiApiKey: z.string().default(''),
     aiModel: z.string().default('deepseek-chat'),
     aiPrompt: z.string().default(''),
+    noteNamingPattern: noteNamingPatternSchema.default('dateTitle'),
   }).default({ baseUrl: 'https://rss.qiaomu.ai', folder: 'Qiaomu RSS', defaultMode: 'rewrite', remoteImages: true, listWidth: 300,
     fontSize: 19, fontFamily: 'fangsong', customFont: '', lineHeight: 1.9, lineWidth: 36, lastSource: '', selectionPopup: true, markdownFolders: [],
     weMpServerUrl: 'http://43.156.114.156:8001', weMpToken: '',
-    aiApiUrl: 'https://api.deepseek.com/v1', aiApiKey: '', aiModel: 'deepseek-chat', aiPrompt: '' }),
+    aiApiUrl: 'https://api.deepseek.com/v1', aiApiKey: '', aiModel: 'deepseek-chat', aiPrompt: '',
+    noteNamingPattern: 'dateTitle' }),
   readIds: z.array(z.string()).default([]), favorites: z.record(z.string(), bundleSchema).default({}),
   entries: z.array(entrySchema).default([]), sources: z.array(sourceSchema).default([]),
   subscriptions: z.array(subscriptionSchema).default([]),

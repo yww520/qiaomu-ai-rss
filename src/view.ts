@@ -852,7 +852,7 @@ export class ReaderView extends ItemView {
     this.run(async () => {
       this.plugin.remember(bundle);
       const result = await this.plugin.noteArticle(bundle.entry, '', this.mode);
-      new Notice(result.added ? '已添加到今日日记。' : '今日日记中已有这篇文章。');
+      new Notice(result.added ? `已保存至文章笔记：${result.file.basename}` : `笔记中已有该内容：${result.file.basename}`);
     });
   }
   private clearImages() {
@@ -953,7 +953,7 @@ export class ReaderView extends ItemView {
       await this.plugin.persist(); this.renderReader(true); this.renderList();
     }));
     readButton.setAttribute('aria-pressed', String(read));
-    this.addIconButton(actions, 'notebook-pen', '记到今日日记', () => this.noteCurrent());
+    this.addIconButton(actions, 'notebook-pen', '记入文章笔记', () => this.noteCurrent());
 
     // AI Summary Toolbar Button
     const hasSummary = !!bundle.entry.aiSummary;
@@ -1134,9 +1134,9 @@ export class ReaderView extends ItemView {
     try {
       const excerpt = `> 🤖 **AI 深度洞察与总结**：\n\n${bundle.entry.aiSummary}\n\n`;
       const result = await this.plugin.appendToDailyNote(bundle.entry, excerpt, this.mode);
-      new Notice(result.added ? '已追加 AI 总结到今日日记。' : '今日日记中已记录本篇。');
+      new Notice(result.added ? `已追加 AI 总结至文章笔记：${result.file.basename}` : `文章笔记中已有该总结：${result.file.basename}`);
     } catch (err) {
-      new Notice(err instanceof Error ? err.message : '写入今日日记失败。');
+      new Notice(err instanceof Error ? err.message : '写入文章笔记失败。');
     }
   }
 
@@ -1203,7 +1203,7 @@ export class ReaderView extends ItemView {
 
       const noteBtn = btnGroup.createEl('button', {
         cls: 'qrs-ai-card-btn',
-        attr: { 'data-qrs-label': '追加到今日日记' },
+        attr: { 'data-qrs-label': '追加到文章笔记' },
       });
       setIcon(noteBtn, 'notebook-pen');
       noteBtn.onclick = () => void this.noteSummary(bundle);

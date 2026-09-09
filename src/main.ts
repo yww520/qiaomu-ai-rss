@@ -2,8 +2,8 @@ import { EditorView } from '@codemirror/view';
 import { MarkdownView, Notice, Plugin, PluginSettingTab, TFile, type App, type SettingDefinitionItem } from 'obsidian';
 import { requestUrl } from 'obsidian';
 import { RssApi } from './api';
-import { deduplicateEntriesList, folderPath, initialState, modeLabels, modeSchema, readingFontSchema, type Bundle, type Entry, type Mode, type State } from './model';
-import { cleanCaptureMarkers, repairArticleLinks, appendDailyNoteLink, dailyNotePath, readDailyNoteSettings, renderDailyNoteTemplate } from './daily-note';
+import { deduplicateEntriesList, folderPath, initialState, modeLabels, modeSchema, noteNamingPatternLabels, noteNamingPatternSchema, readingFontSchema, type Bundle, type Entry, type Mode, type State } from './model';
+import { cleanCaptureMarkers, repairArticleLinks, appendDailyNoteLink, articleNotePath, dailyNotePath, readDailyNoteSettings, renderDailyNoteTemplate } from './daily-note';
 import { ReaderView, VIEW_TYPE } from './view';
 import { vaultSourceId, VaultFolderPicker, VaultSources } from './vault-source';
 import { readingFonts, selectableFonts, ReadingFonts } from './fonts';
@@ -165,13 +165,13 @@ export default class QiaomuRssPlugin extends Plugin {
       const bundle = this.state.cache[entry.id] || this.state.favorites[entry.id] || { entry, rewrite: entry.rewrite || null, translation: null, fetchedAt: Date.now() };
       this.state.savedArticles[id] = bundle;
       await this.persist();
-      const options = { vault: this.app.vault.getName(), article: id, mode, excerpt };
+      const options = { vault: this.app.vault.getName(), article: id, mode, excerpt, rawMarkdown: true };
       if (target && this.app.vault.getAbstractFileByPath(target.path) !== target) throw new Error('目标笔记已不存在。');
       const settings = target ? { folder: '', format: '', template: '' } : await readDailyNoteSettings(this.app.vault);
-      const path = target?.path ?? dailyNotePath(settings);
+      const path = target?.path ?? articleNotePath(settings, entry, this.state.settings.noteNamingPattern);
       let existing = this.app.vault.getAbstractFileByPath(path);
       let added = false;
-      if (existing && !(existing instanceof TFile)) throw new Error('今日日记路径已被文件夹占用。');
+      if (existing && !(existing instanceof TFile)) throw new Error('笔记路径已被文件夹占用。');
       if (!(existing instanceof TFile)) {
         await this.ensureFolder(path);
         let template = '';
@@ -186,7 +186,7 @@ export default class QiaomuRssPlugin extends Plugin {
           if (!(existing instanceof TFile)) throw error;
         }
       }
-      if (!(existing instanceof TFile)) throw new Error('无法创建今日日记。');
+      if (!(existing instanceof TFile)) throw new Error('无法创建笔记。');
       if (!added) {
         const view = this.app.workspace.getLeavesOfType('markdown').map(leaf => leaf.view)
           .find(view => view instanceof MarkdownView && view.file === existing);
@@ -500,10 +500,23 @@ class RssSettings extends PluginSettingTab {
         },
       ]
     };
+    const notePatternSetting: SettingDefinitionItem = {
+      name: '文章笔记命名规则',
+      desc: '保存文章笔记（点击笔形图标或追加到日记）时的文件名格式。包含标题可避免多篇文章重叠，方便检索回顾。',
+      render: setting => {
+        setting.addDropdown(drop => {
+          for (const [value, label] of Object.entries(noteNamingPatternLabels)) drop.addOption(value, label);
+          drop.setValue(settings.noteNamingPattern).onChange(async value => {
+            settings.noteNamingPattern = noteNamingPatternSchema.parse(value);
+            await this.plugin.persist();
+          });
+        });
+      }
+    };
     const buckets: Record<string, SettingDefinitionItem[]> = {
       '阅读': [reading, definitions[4], definitions[5]],
       '来源': [definitions[2], definitions[8], definitions[1], definitions[3]],
-      '摘录': [excerpt, definitions[7]],
+      '摘录': [excerpt, notePatternSetting, definitions[7]],
       'AI 总结': [aiGroup],
       '关于': [definitions[6], ...[
         ['建议与问题反馈', 'GitHub Issues', 'https://github.com/joeseesun/qiaomu-ai-rss/issues'],

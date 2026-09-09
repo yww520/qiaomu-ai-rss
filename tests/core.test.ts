@@ -2,7 +2,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { RssApi } from '../src/api';
 import { articleFragment } from '../src/content';
-import { articleNoteUrl, appendDailyNoteLink, dailyNoteLink, dailyNotePath, renderDailyNoteTemplate } from '../src/daily-note';
+import { articleNoteUrl, appendDailyNoteLink, articleNotePath, dailyNoteLink, dailyNotePath, renderDailyNoteTemplate, sanitizeFilename } from '../src/daily-note';
 import { canonicalEntryKey, deduplicateEntriesList, folderPath, initialState, withServiceOrigin, safeUrl, serviceUrl, type Bundle, type Entry } from '../src/model';
 const bundle: Bundle = {
   entry: { id: 'abc123', sourceId: 'example', title: 'Title: "quotes"\n---', link: 'https://example.com/news', content: '<h2>Original</h2><p>Full text</p>' },
@@ -108,6 +108,34 @@ describe('untrusted remote content', () => {
     const now = { format: (format: string) => ({ 'YYYY/MM/DD': '2026/09/07', 'YYYY-MM-DD': '2026-09-07', 'HH:mm': '12:30' })[format] || format } as never;
     expect(dailyNotePath({ folder: 'Daily', format: 'YYYY/MM/DD', template: '' }, now)).toBe('Daily/2026/09/07.md');
     expect(renderDailyNoteTemplate('# {{title}}\n{{date}} {{time}}', '2026-09-07', now)).toBe('# 2026-09-07\n2026-09-07 12:30');
+  });
+  it('generates article note paths with custom naming patterns and sanitized titles', () => {
+    const now = { format: (format: string) => ({ 'YYYY-MM-DD': '2026-09-09' })[format] || format } as never;
+    const entry: Entry = {
+      id: 'test1',
+      sourceId: 's1',
+      title: '大摩闭门会核心判断：现在既不是2021，也不是924 / 特别关注',
+      titleZh: '大摩闭门会核心判断：现在既不是2021，也不是924 / 特别关注',
+      link: 'https://mp.weixin.qq.com/s/xyz',
+    };
+
+    expect(sanitizeFilename('大摩:核心/要点? "引号" <标签> *星号* | 竖线')).toBe('大摩 核心 要点 引号 标签 星号 竖线');
+
+    // Default: dateTitle
+    expect(articleNotePath({ folder: 'Daily', format: 'YYYY-MM-DD', template: '' }, entry, 'dateTitle', now))
+      .toBe('Daily/2026-09-09 - 大摩闭门会核心判断：现在既不是2021，也不是924 特别关注.md');
+
+    // titleDate
+    expect(articleNotePath({ folder: '', format: 'YYYY-MM-DD', template: '' }, entry, 'titleDate', now))
+      .toBe('大摩闭门会核心判断：现在既不是2021，也不是924 特别关注 - 2026-09-09.md');
+
+    // title
+    expect(articleNotePath({ folder: 'Notes', format: 'YYYY-MM-DD', template: '' }, entry, 'title', now))
+      .toBe('Notes/大摩闭门会核心判断：现在既不是2021，也不是924 特别关注.md');
+
+    // date
+    expect(articleNotePath({ folder: 'Daily', format: 'YYYY-MM-DD', template: '' }, entry, 'date', now))
+      .toBe('Daily/2026-09-09.md');
   });
 });
 describe('paths and persistence', () => {

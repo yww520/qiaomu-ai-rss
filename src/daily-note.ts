@@ -29,7 +29,46 @@ export function dailyNotePath(settings: DailyNoteSettings, now: DateFormatter = 
   return normalizePath(`${settings.folder ? `${settings.folder}/` : ''}${dated}.md`);
 }
 
-export interface CaptureOptions { vault?: string; article?: string; mode?: Mode; excerpt?: string }
+export function sanitizeFilename(name: string): string {
+  return name
+    .replace(/[\\/:*?"<>|#^[\]]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80);
+}
+
+export function articleNotePath(
+  settings: DailyNoteSettings,
+  entry: Entry,
+  pattern: import('./model').NoteNamingPattern = 'dateTitle',
+  now: DateFormatter = currentMoment()
+): string {
+  const dated = cleanPath(now.format(settings.format)) || now.format('YYYY-MM-DD');
+  const rawTitle = titleOf(entry).replace(/\s+/g, ' ').trim();
+  const title = sanitizeFilename(rawTitle) || '未命名文章';
+
+  let filename = '';
+  switch (pattern) {
+    case 'dateTitle':
+      filename = `${dated} - ${title}`;
+      break;
+    case 'titleDate':
+      filename = `${title} - ${dated}`;
+      break;
+    case 'title':
+      filename = title;
+      break;
+    case 'date':
+      filename = dated;
+      break;
+    default:
+      filename = `${dated} - ${title}`;
+  }
+
+  return normalizePath(`${settings.folder ? `${settings.folder}/` : ''}${filename}.md`);
+}
+
+export interface CaptureOptions { vault?: string; article?: string; mode?: Mode; excerpt?: string; rawMarkdown?: boolean }
 export function articleNoteUrl(options: CaptureOptions): string {
   const params = new URLSearchParams({ vault: options.vault || '', article: options.article || '', mode: options.mode || 'original' });
   return `obsidian://qiaomu-ai-rss?${params.toString().replace(/\+/g, '%20')}`;
@@ -52,7 +91,7 @@ export function appendDailyNoteLink(content: string, entry: Entry, options: Capt
   content = cleanCaptureMarkers(repairArticleLinks(content));
   const title = dailyNoteLink(entry, options);
   const excerpt = options.excerpt?.trim();
-  const text = excerpt ? markdownText(excerpt) : '';
+  const text = excerpt ? (options.rawMarkdown ? excerpt : markdownText(excerpt)) : '';
   // Upgrade an existing capture's header without changing its title or reading-version link.
   const originalSuffix = title.slice(title.indexOf('>)') + 2);
   if (options.article && originalSuffix) {
