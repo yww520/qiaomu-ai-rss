@@ -1,6 +1,6 @@
 import { requestUrl } from 'obsidian';
 import { feedUrl, MAX_SUBSCRIPTIONS, parseFeed, stableId, type FeedInput } from './feeds';
-import { subscriptionSchema, type State, type Subscription } from './model';
+import { deduplicateEntriesList, subscriptionSchema, type State, type Subscription } from './model';
 export type FeedTransport = (url: string) => Promise<{ status: number; text: string }>;
 export class Subscriptions {
   private pending = new Map<string, Promise<void>>();
@@ -25,7 +25,8 @@ export class Subscriptions {
     if (this.state().subscriptions.some(feed => feed.url === url)) throw new Error('这个订阅源已经添加。');
     if (this.state().subscriptions.length >= MAX_SUBSCRIPTIONS) throw new Error(`最多添加 ${MAX_SUBSCRIPTIONS} 个订阅源。`);
     const parsed = await this.fetch(url, doc);
-    const feed = subscriptionSchema.parse({ id: `local:${await stableId(url)}`, url, name: parsed.name, group: group.trim().slice(0, 100), entries: parsed.entries, updatedAt: Date.now() });
+    const entries = deduplicateEntriesList(parsed.entries, this.state().deletedIds);
+    const feed = subscriptionSchema.parse({ id: `local:${await stableId(url)}`, url, name: parsed.name, group: group.trim().slice(0, 100), entries, updatedAt: Date.now() });
     // Recheck after the network request, including concurrently submitted duplicate URLs.
     if (this.state().subscriptions.some(item => item.url === url)) throw new Error('这个订阅源已经添加。');
     if (this.state().subscriptions.length >= MAX_SUBSCRIPTIONS) throw new Error(`最多添加 ${MAX_SUBSCRIPTIONS} 个订阅源。`);
@@ -65,8 +66,8 @@ export class Subscriptions {
       try {
         const parsed = await this.fetch(feed.url, doc);
         if (!this.state().subscriptions.includes(feed)) return;
-        feed.entries = parsed.entries; feed.updatedAt = Date.now(); feed.error = '';
-        for (const entry of parsed.entries) {
+        feed.entries = deduplicateEntriesList(parsed.entries, this.state().deletedIds); feed.updatedAt = Date.now(); feed.error = '';
+        for (const entry of feed.entries) {
           if (this.state().cache[entry.id]) {
             this.state().cache[entry.id].entry = entry;
           }

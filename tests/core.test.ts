@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { RssApi } from '../src/api';
 import { articleFragment } from '../src/content';
 import { articleNoteUrl, appendDailyNoteLink, dailyNoteLink, dailyNotePath, renderDailyNoteTemplate } from '../src/daily-note';
-import { folderPath, initialState, withServiceOrigin, safeUrl, serviceUrl, type Bundle } from '../src/model';
+import { canonicalEntryKey, deduplicateEntriesList, folderPath, initialState, withServiceOrigin, safeUrl, serviceUrl, type Bundle, type Entry } from '../src/model';
 const bundle: Bundle = {
   entry: { id: 'abc123', sourceId: 'example', title: 'Title: "quotes"\n---', link: 'https://example.com/news', content: '<h2>Original</h2><p>Full text</p>' },
   rewrite: { body: '# Title\n\n**Hello** [source](/path)\n\n```dataviewjs\nthrow Error("never execute");\n```' },
@@ -139,6 +139,28 @@ describe('paths and persistence', () => {
     expect(initialState({ settings: {} }).settings).toMatchObject({ fontSize: 19, fontFamily: 'fangsong', lineHeight: 1.9, lineWidth: 36 });
     const state = initialState({ settings: { fontSize: 24, fontFamily: 'sans', lineHeight: 2.2, lineWidth: 44 } });
     expect(initialState(JSON.parse(JSON.stringify(state))).settings).toMatchObject({ fontSize: 24, fontFamily: 'sans', lineHeight: 2.2, lineWidth: 44 });
+  });
+  it('deduplicates entries with the same canonical WeChat link or URL parameters', () => {
+    const e1: Entry = { id: 'local-1', sourceId: 'src-1', title: 'Visa发布链上借贷', link: 'https://mp.weixin.qq.com/s/QT9YTiFO_fm1gs1LRvZGQg?chksm=abc&scene=21', publishedTs: 1000, content: 'short' };
+    const e2: Entry = { id: 'local-2', sourceId: 'src-2', title: 'Visa发布链上借贷', link: 'https://mp.weixin.qq.com/s/QT9YTiFO_fm1gs1LRvZGQg', publishedTs: 1000, content: 'longer content here' };
+    const e3: Entry = { id: 'local-3', sourceId: 'src-3', title: 'Another article', link: 'https://mp.weixin.qq.com/s/other123', publishedTs: 2000, content: 'text' };
+
+    expect(canonicalEntryKey(e1)).toBe('wx:/s/QT9YTiFO_fm1gs1LRvZGQg');
+    expect(canonicalEntryKey(e2)).toBe('wx:/s/QT9YTiFO_fm1gs1LRvZGQg');
+
+    const result = deduplicateEntriesList([e1, e2, e3]);
+    expect(result).toHaveLength(2);
+    // Should keep e2 because it has longer content
+    expect(result.find(r => canonicalEntryKey(r) === 'wx:/s/QT9YTiFO_fm1gs1LRvZGQg')?.id).toBe('local-2');
+  });
+  it('filters out deleted entries using deletedIds', () => {
+    const e1: Entry = { id: 'local-1', sourceId: 'src-1', title: 'Article 1', link: 'https://mp.weixin.qq.com/s/del1', publishedTs: 1000 };
+    const e2: Entry = { id: 'local-2', sourceId: 'src-1', title: 'Article 2', link: 'https://mp.weixin.qq.com/s/keep2', publishedTs: 2000 };
+
+    const deletedIds = ['wx:/s/del1'];
+    const result = deduplicateEntriesList([e1, e2], deletedIds);
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe('local-2');
   });
 });
 describe('API contract and failures', () => {

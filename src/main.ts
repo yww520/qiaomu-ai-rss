@@ -2,7 +2,7 @@ import { EditorView } from '@codemirror/view';
 import { MarkdownView, Notice, Plugin, PluginSettingTab, TFile, type App, type SettingDefinitionItem } from 'obsidian';
 import { requestUrl } from 'obsidian';
 import { RssApi } from './api';
-import { folderPath, initialState, modeLabels, modeSchema, readingFontSchema, type Bundle, type Entry, type Mode, type State } from './model';
+import { deduplicateEntriesList, folderPath, initialState, modeLabels, modeSchema, readingFontSchema, type Bundle, type Entry, type Mode, type State } from './model';
 import { cleanCaptureMarkers, repairArticleLinks, appendDailyNoteLink, dailyNotePath, readDailyNoteSettings, renderDailyNoteTemplate } from './daily-note';
 import { ReaderView, VIEW_TYPE } from './view';
 import { vaultSourceId, VaultFolderPicker, VaultSources } from './vault-source';
@@ -32,7 +32,16 @@ export default class QiaomuRssPlugin extends Plugin {
       }
     }));
     const data: unknown = await this.loadData();
-    try { this.state = initialState(data); }
+    try {
+      this.state = initialState(data);
+      for (const sub of this.state.subscriptions) {
+        sub.entries = deduplicateEntriesList(sub.entries, this.state.deletedIds);
+      }
+      this.state.entries = deduplicateEntriesList(this.state.entries, this.state.deletedIds);
+      for (const cs of Object.values(this.state.channelStates)) {
+        cs.entries = deduplicateEntriesList(cs.entries, this.state.deletedIds);
+      }
+    }
     catch { new Notice('RSS 配置不兼容，已使用默认设置。'); }
     this.images = new LocalImages(this.app.vault, `${this.app.vault.configDir}/plugins/${this.manifest.id}/image-cache`);
     registerImageDrops(this);

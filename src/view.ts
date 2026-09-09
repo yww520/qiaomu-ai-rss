@@ -7,7 +7,7 @@ import { enableImageDrag, prepareMarkdownImageDrags } from './image-drag';
 import { SelectionCapture } from './selection';
 import { readingFonts, selectableFonts, fontFamily } from './fonts';
 import { articleFragment } from './content';
-import { modeLabels, modeSchema, readingFontSchema, safeUrl, titleOf, type ChannelState, type Bundle, type Entry, type Mode, type Highlight, type HighlightStyle } from './model';
+import { canonicalEntryKey, modeLabels, modeSchema, readingFontSchema, safeUrl, titleOf, type ChannelState, type Bundle, type Entry, type Mode, type Highlight, type HighlightStyle } from './model';
 import { createHighlightId, wrapRangeWithHighlight, restoreHighlightsInContainer, removeHighlightFromContainer, updateHighlightInContainer, HighlightCard } from './highlights';
 export const VIEW_TYPE = 'qiaomu-ai-rss-reader';
 type Filter = 'all' | 'unread' | 'favorites';
@@ -19,11 +19,100 @@ export class ReaderView extends ItemView {
   private checkpointTimer?: number;
   private lastListTop = 0;
   private lastReaderTop = 0;
+  private activeSwipedWrap: HTMLElement | null = null;
   private channelKey() { return JSON.stringify([this.plugin.state.settings.baseUrl, this.source]); }
+  private closeSwipedWrap(wrap: HTMLElement) {
+    const row = wrap.querySelector('.qrs-entry') as HTMLElement;
+    if (row) row.setCssProps({ '--qrs-swipe-transform': '' });
+    wrap.removeClass('is-swiped-open');
+    if (this.activeSwipedWrap === wrap) this.activeSwipedWrap = null;
+  }
+  private deduplicateEntries(entries: Entry[]): Entry[] {
+    const deleted = new Set(this.plugin.state.deletedIds || []);
+    const map = new Map<string, Entry>();
+    for (const entry of entries) {
+      if (deleted.has(entry.id)) continue;
+      const key = canonicalEntryKey(entry);
+      if (deleted.has(key)) continue;
+      const existing = map.get(key);
+      if (!existing) {
+        map.set(key, entry);
+      } else {
+        map.set(key, this.pickBetterEntry(existing, entry));
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => (b.publishedTs || 0) - (a.publishedTs || 0));
+  }
+  private pickBetterEntry(a: Entry, b: Entry): Entry {
+    const state = this.plugin.state;
+    const aFav = !!state.favorites[a.id];
+    const bFav = !!state.favorites[b.id];
+    if (aFav && !bFav) return a;
+    if (bFav && !aFav) return b;
+
+    const aRead = state.readIds.includes(a.id);
+    const bRead = state.readIds.includes(b.id);
+    if (aRead && !bRead) return a;
+    if (bRead && !aRead) return b;
+
+    if (a.rewrite && !b.rewrite) return a;
+    if (b.rewrite && !a.rewrite) return b;
+    if (a.summaryZh && !b.summaryZh) return a;
+    if (b.summaryZh && !a.summaryZh) return b;
+
+    const aLen = a.content?.length || 0;
+    const bLen = b.content?.length || 0;
+    if (aLen !== bLen) return aLen > bLen ? a : b;
+    return a;
+  }
+  async deleteArticle(entry: Entry) {
+    const key = canonicalEntryKey(entry);
+    const id = entry.id;
+
+    const deletedSet = new Set(this.plugin.state.deletedIds || []);
+    deletedSet.add(id);
+    if (key) deletedSet.add(key);
+    this.plugin.state.deletedIds = Array.from(deletedSet).slice(-2000);
+
+    this.entries = this.entries.filter(e => e.id !== id && canonicalEntryKey(e) !== key);
+
+    for (const sub of this.plugin.state.subscriptions) {
+      sub.entries = sub.entries.filter(e => e.id !== id && canonicalEntryKey(e) !== key);
+    }
+    this.plugin.state.entries = this.plugin.state.entries.filter(e => e.id !== id && canonicalEntryKey(e) !== key);
+
+    for (const st of Object.values(this.plugin.state.channelStates)) {
+      st.entries = st.entries.filter(e => e.id !== id && canonicalEntryKey(e) !== key);
+      if (st.bundle?.entry.id === id || (st.bundle && canonicalEntryKey(st.bundle.entry) === key)) {
+        st.bundle = null;
+      }
+    }
+
+    if (this.bundle?.entry.id === id || (this.bundle && canonicalEntryKey(this.bundle.entry) === key)) {
+      this.bundle = null;
+      this.contentEl.removeClass('qrs-has-article');
+      this.renderReader();
+    }
+
+    delete this.plugin.state.cache[id];
+    delete this.plugin.state.favorites[id];
+
+    await this.plugin.persist();
+    this.renderList();
+    new Notice(`已删除文章: ${titleOf(entry)}`);
+  }
+  async deleteArticleWithAnimation(wrap: HTMLElement, entry: Entry) {
+    if (wrap.hasClass('is-deleting')) return;
+    wrap.addClass('is-deleting');
+    const row = wrap.querySelector('.qrs-entry') as HTMLElement;
+    if (row) row.setCssProps({ '--qrs-swipe-transform': 'translateX(100%)' });
+    await new Promise(r => window.setTimeout(r, 220));
+    await this.deleteArticle(entry);
+  }
   private saveChannel() {
     if (!this.list || !this.reader) return;
     this.plugin.state.channelStates[this.channelKey()] = {
-      entries: this.entries, bundle: this.bundle, mode: this.mode, filter: this.filter, query: this.query,
+      entries: this.deduplicateEntries(this.entries), bundle: this.bundle, mode: this.mode, filter: this.filter, query: this.query,
       unread: [...this.unreadSession], cursor: this.cursor, hasMore: this.hasMore,
       listTop: this.pendingScroll?.listTop ?? (this.list.clientHeight ? this.list.scrollTop : this.lastListTop),
       readerTop: this.pendingScroll?.readerTop ?? (this.reader.clientHeight ? this.reader.scrollTop : this.lastReaderTop), articlePending: this.articleLoading,
@@ -41,7 +130,7 @@ export class ReaderView extends ItemView {
     this.restoreObserver.observe(this.list); this.restoreObserver.observe(this.reader);
   }
   private restoreChannel(saved: ChannelState) {
-    this.entries = saved.entries; this.bundle = saved.bundle; this.mode = saved.mode;
+    this.entries = this.deduplicateEntries(saved.entries); this.bundle = saved.bundle; this.mode = saved.mode;
     this.filter = saved.filter; this.query = saved.query; this.unreadSession = new Set(saved.unread);
     this.cursor = saved.cursor; this.hasMore = saved.hasMore; this.lastListTop = saved.listTop; this.lastReaderTop = saved.readerTop;
     this.pendingScroll = { listTop: saved.listTop, readerTop: saved.readerTop };
@@ -335,6 +424,7 @@ export class ReaderView extends ItemView {
     for (const element of [this.list, this.reader]) {
       for (const event of ['wheel', 'touchstart', 'pointerdown', 'keydown'] as const) element.addEventListener(event, () => this.stopRestoring(), { passive: true });
       element.addEventListener('scroll', () => {
+        if (this.activeSwipedWrap) this.closeSwipedWrap(this.activeSwipedWrap);
         if (this.list.clientHeight) this.lastListTop = this.list.scrollTop;
         if (this.reader.clientHeight) this.lastReaderTop = this.reader.scrollTop;
         if (this.checkpointTimer) window.clearTimeout(this.checkpointTimer);
@@ -378,7 +468,7 @@ export class ReaderView extends ItemView {
     return this.plugin.state.subscriptions.filter(feed => this.source === '@local' || feed.id === this.source ||
       (this.source.startsWith('@group:') && feed.group === this.source.slice(7)));
   }
-  private localEntries() { return this.selectedFeeds().flatMap(feed => feed.entries).sort((a, b) => (b.publishedTs || 0) - (a.publishedTs || 0)); }
+  private localEntries() { return this.deduplicateEntries(this.selectedFeeds().flatMap(feed => feed.entries)); }
   showSubscriptions() { this.selectSource('@local', false); }
   showSubscription(id: string) {
     if (this.plugin.state.subscriptions.some(feed => feed.id === id)) this.selectSource(id, false);
@@ -494,7 +584,8 @@ export class ReaderView extends ItemView {
   }
   private visibleEntries(): Entry[] {
     const state = this.plugin.state;
-    const entries = this.filter === 'favorites' ? Object.values(state.favorites).map(b => b.entry) : this.entries;
+    const raw = this.filter === 'favorites' ? Object.values(state.favorites).map(b => b.entry) : this.entries;
+    const entries = this.deduplicateEntries(raw);
     const query = this.query.trim().toLocaleLowerCase();
     return entries.filter(entry => (this.vaultScope() ? entry.origin === 'vault' && entry.sourceId === this.source : this.personalScope()
       ? entry.origin === 'local' && (this.source === '@local' || this.selectedFeeds().some(feed => feed.id === entry.sourceId))
@@ -542,12 +633,26 @@ export class ReaderView extends ItemView {
     });
   }
   private renderList() {
+    this.activeSwipedWrap = null;
     const restoreFocus = this.list.contains(this.contentEl.ownerDocument.activeElement);
     const scroll = this.list.scrollTop; this.list.empty(); const entries = this.visibleEntries();
     if (!entries.length) this.list.createDiv({ cls: 'qrs-empty', text: this.loading ? '正在获取文章…' : this.filter === 'favorites' ? '收藏喜欢的文章，在这里慢慢读。' : this.personalScope() && !this.entries.length ? '还没有文章。点击 + 添加订阅，或点击刷新获取文章。' : '暂无匹配文章，试试其他频道或筛选。' });
     for (const entry of entries) {
       const read = this.plugin.state.readIds.includes(entry.id);
-      const row = this.list.createEl('button', { cls: 'qrs-entry', attr: { 'data-entry-id': entry.id } });
+      const wrap = this.list.createDiv({ cls: 'qrs-entry-wrap' });
+
+      const swipeAction = wrap.createDiv({ cls: 'qrs-entry-swipe-action' });
+      const deleteBtn = swipeAction.createDiv({ cls: 'qrs-entry-delete-btn', attr: { role: 'button', 'aria-label': '删除文章' } });
+      setIcon(deleteBtn.createSpan('qrs-entry-delete-icon'), 'trash');
+      deleteBtn.createSpan({ text: '删除', cls: 'qrs-entry-delete-text' });
+
+      deleteBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        void this.deleteArticleWithAnimation(wrap, entry);
+      });
+
+      const row = wrap.createEl('button', { cls: 'qrs-entry', attr: { 'data-entry-id': entry.id } });
       row.toggleClass('qrs-selected', this.bundle?.entry.id === entry.id);
       row.setAttribute('aria-pressed', String(this.bundle?.entry.id === entry.id)); row.toggleClass('qrs-read', read);
       const copy = row.createSpan('qrs-entry-copy');
@@ -562,7 +667,105 @@ export class ReaderView extends ItemView {
       if (this.plugin.state.favorites[entry.id]) setIcon(title.createSpan('qrs-bookmarked'), 'bookmark');
       const summary = this.excerpt(entry); if (summary) copy.createEl('p', { text: summary, cls: 'qrs-summary' });
       this.renderThumbnail(row, entry);
-      row.addEventListener('click', () => { void this.openArticle(entry); });
+
+      let startX = 0;
+      let startY = 0;
+      let isTracking = false;
+      let isSwiping = false;
+      let isScrolling = false;
+      let pointerId = -1;
+      let suppressClick = false;
+
+      row.addEventListener('pointerdown', (e: PointerEvent) => {
+        if (e.button !== 0) return;
+        if (this.activeSwipedWrap && this.activeSwipedWrap !== wrap) {
+          this.closeSwipedWrap(this.activeSwipedWrap);
+        }
+        startX = e.clientX;
+        startY = e.clientY;
+        isTracking = true;
+        isSwiping = false;
+        isScrolling = false;
+        pointerId = e.pointerId;
+      });
+
+      row.addEventListener('pointermove', (e: PointerEvent) => {
+        if (!isTracking || e.pointerId !== pointerId) return;
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+
+        if (!isSwiping && !isScrolling) {
+          if (Math.abs(dy) > 7 && Math.abs(dy) > Math.abs(dx)) {
+            isScrolling = true;
+            return;
+          }
+          if (dx > 7 && Math.abs(dx) > Math.abs(dy)) {
+            isSwiping = true;
+            try { row.setPointerCapture(pointerId); } catch { /* ignore */ }
+            row.addClass('is-dragging');
+          }
+        }
+
+        if (isSwiping) {
+          const moveX = dx <= 0 ? 0 : dx < 80 ? dx : 80 + (dx - 80) * 0.45;
+          row.setCssProps({ '--qrs-swipe-transform': `translateX(${Math.round(moveX)}px)` });
+        }
+      });
+
+      const onPointerEnd = (e: PointerEvent) => {
+        if (!isTracking || e.pointerId !== pointerId) return;
+        isTracking = false;
+        row.removeClass('is-dragging');
+        try { row.releasePointerCapture(pointerId); } catch { /* ignore */ }
+
+        if (isSwiping) {
+          const dx = e.clientX - startX;
+          suppressClick = true;
+          window.setTimeout(() => { suppressClick = false; }, 150);
+
+          if (dx >= 130) {
+            void this.deleteArticleWithAnimation(wrap, entry);
+          } else if (dx >= 45) {
+            row.setCssProps({ '--qrs-swipe-transform': 'translateX(80px)' });
+            wrap.addClass('is-swiped-open');
+            this.activeSwipedWrap = wrap;
+          } else {
+            this.closeSwipedWrap(wrap);
+          }
+        }
+      };
+
+      row.addEventListener('pointerup', onPointerEnd);
+      row.addEventListener('pointercancel', onPointerEnd);
+
+      row.addEventListener('click', (e) => {
+        if (suppressClick) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
+        if (wrap.hasClass('is-swiped-open')) {
+          e.preventDefault();
+          e.stopPropagation();
+          this.closeSwipedWrap(wrap);
+          return;
+        }
+        void this.openArticle(entry);
+      });
+
+      row.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        const menu = new Menu();
+        menu.addItem(item => {
+          item.setTitle('删除文章')
+            .setIcon('trash')
+            .setWarning(true)
+            .onClick(() => {
+              void this.deleteArticleWithAnimation(wrap, entry);
+            });
+        });
+        menu.showAtMouseEvent(e);
+      });
     }
     if (this.hasMore && this.filter !== 'favorites') {
       const button = this.list.createEl('button', { text: this.loading ? '加载中…' : '加载更早文章', cls: 'qrs-more' });

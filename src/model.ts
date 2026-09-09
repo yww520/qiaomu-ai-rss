@@ -69,11 +69,61 @@ export const stateSchema = z.object({
   channelStates: z.record(z.string(), channelStateSchema).catch({}).default({}),
   savedArticles: z.record(z.string(), bundleSchema).default({}),
   highlights: z.record(z.string(), z.array(highlightSchema)).catch({}).default({}),
+  deletedIds: z.array(z.string()).catch([]).default([]),
   cache: z.record(z.string(), bundleSchema).default({}), updatedAt: z.number().default(0),
 });
 export type State = z.infer<typeof stateSchema>;
 export function initialState(data: unknown): State { return stateSchema.parse(data ?? {}); }
 export function titleOf(entry: Entry): string { return entry.titleZh?.trim() || entry.title; }
+export function canonicalEntryKey(entry?: Pick<Entry, 'id' | 'link' | 'title'> | null): string {
+  if (!entry) return '';
+  if (entry.link) {
+    try {
+      const u = new URL(entry.link);
+      if (u.hostname.includes('mp.weixin.qq.com')) {
+        if (u.pathname.startsWith('/s/')) {
+          return `wx:${u.pathname}`;
+        }
+        const biz = u.searchParams.get('__biz');
+        const mid = u.searchParams.get('mid');
+        const idx = u.searchParams.get('idx');
+        const sn = u.searchParams.get('sn');
+        if (biz && mid && idx && sn) {
+          return `wx:${biz}:${mid}:${idx}:${sn}`;
+        }
+      }
+      const trackingKeys = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'chksm', 'scene', 'subscene', 'sessionid', 'clicktime', 'enterid', 'ascene', 'devicetype', 'version', 'nettype', 'abtest_cookie', 'lang', 'exportkey', 'pass_ticket', 'wechat_redirect'];
+      for (const k of trackingKeys) {
+        u.searchParams.delete(k);
+      }
+      u.hash = '';
+      const cleanPath = u.pathname.replace(/\/$/, '') || '/';
+      const search = u.searchParams.toString() ? `?${u.searchParams.toString()}` : '';
+      return `url:${u.origin}${cleanPath}${search}`;
+    } catch {
+      return `link:${entry.link.trim()}`;
+    }
+  }
+  return `id:${entry.id}`;
+}
+export function deduplicateEntriesList(entries: Entry[], deletedIds?: string[]): Entry[] {
+  const deleted = new Set(deletedIds || []);
+  const map = new Map<string, Entry>();
+  for (const entry of entries) {
+    if (deleted.has(entry.id)) continue;
+    const key = canonicalEntryKey(entry);
+    if (deleted.has(key)) continue;
+    const existing = map.get(key);
+    if (!existing) {
+      map.set(key, entry);
+    } else {
+      const aLen = existing.content?.length || 0;
+      const bLen = entry.content?.length || 0;
+      map.set(key, bLen > aLen ? entry : existing);
+    }
+  }
+  return Array.from(map.values()).sort((a, b) => (b.publishedTs || 0) - (a.publishedTs || 0));
+}
 export function safeUrl(value: string, base?: string): string | null {
   try {
     const url = new URL(value, base);
@@ -98,5 +148,6 @@ export function withServiceOrigin(state: State, baseUrl: string): State {
   return initialState({ savedArticles: state.savedArticles, settings: { ...state.settings, baseUrl: serviceUrl(baseUrl) }, subscriptions: state.subscriptions,
     favorites: Object.fromEntries(Object.entries(state.favorites).filter(([, bundle]) => bundle.entry.origin === 'local' || bundle.entry.origin === 'vault')),
     cache: Object.fromEntries(Object.entries(state.cache).filter(([, bundle]) => bundle.entry.origin === 'local' || bundle.entry.origin === 'vault')),
-    readIds: state.readIds.filter(id => id.startsWith('local-') || id.startsWith('vault:')) });
+    readIds: state.readIds.filter(id => id.startsWith('local-') || id.startsWith('vault:')),
+    deletedIds: state.deletedIds || [] });
 }
