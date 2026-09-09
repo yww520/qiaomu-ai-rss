@@ -425,8 +425,71 @@
 .qrs-welcome-tip h3 { margin:0 0 10px; font-size:15px; font-weight:500; }
 .qrs-welcome-tip p { margin:0; line-height:1.9; font-size:13px; color:var(--text-muted); }
 .qrs-welcome button.qrs-welcome-next { margin:16px 0 0; padding:0; height:32px; border:0; box-shadow:none; background:transparent; color:var(--text-muted); font-size:12px; }
-.qrs-welcome button.qrs-welcome-next:hover { color:var(--text-normal); }
 .qrs-welcome-keys { display:flex; flex-wrap:wrap; gap:18px; margin-top:56px; color:var(--text-faint); font-size:10px; }
 .qrs-welcome-keys > span { display:flex; align-items:center; gap:5px; }
 .qrs-welcome-keys kbd { font-size:10px; padding:0; background:transparent; border:0; box-shadow:none; }
 .is-mobile .qrs-welcome button.qrs-welcome-next { min-height:44px; }
+
+/* Image Zoom Modal */
+.qrs-prose img { cursor: zoom-in; }
+.modal.qrs-image-modal {
+  width: 92vw !important;
+  max-width: 1400px !important;
+  height: 90vh !important;
+  max-height: 90vh !important;
+  padding: 0 !important;
+  background: rgba(15, 23, 42, 0.88) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  border-radius: 14px !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+.qrs-image-modal .modal-close-button {
+  top: 14px;
+  right: 14px;
+  z-index: 10;
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff;
+  border-radius: 50%;
+  padding: 6px;
+  width: 32px;
+  height: 32px;
+}
+.qrs-image-modal .modal-close-button:hover {
+  background: rgba(0, 0, 0, 0.8);
+}
+.qrs-image-modal .modal-content {
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  margin: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.qrs-image-modal-wrap {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  cursor: zoom-out;
+  overflow: auto;
+}
+.qrs-image-modal-wrap img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 8px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: default;
+}
+

@@ -1,6 +1,6 @@
 import { addSearchClear } from './search-clear';
 import { ChannelPicker, channelMark, type ChannelChoice } from './channel-picker';
-import { Component, MarkdownRenderer, ItemView, Menu, Notice, Platform, setIcon, type WorkspaceLeaf } from 'obsidian';
+import { Component, MarkdownRenderer, ItemView, Menu, Modal, Notice, Platform, setIcon, type WorkspaceLeaf } from 'obsidian';
 import type QiaomuRssPlugin from './main';
 import { vaultSourceId } from './vault-source';
 import { enableImageDrag, prepareMarkdownImageDrags } from './image-drag';
@@ -251,6 +251,10 @@ export class ReaderView extends ItemView {
       onDelete: async (id) => { await this.deleteHighlight(id); },
       onClose: () => { this.activeHighlightCard = undefined; },
     });
+  }
+
+  openImageModal(src: string, alt = ''): void {
+    new ImageModal(this.app, src, alt).open();
   }
 
   private updateNotesBadge() {
@@ -1031,6 +1035,18 @@ export class ReaderView extends ItemView {
         this.openHighlightCard(mark, hl);
       }
     });
+
+    // Double click to zoom image
+    prose.addEventListener('dblclick', (e) => {
+      const target = e.target as HTMLElement;
+      const img = target.closest('img') as HTMLImageElement;
+      if (!img) return;
+      const src = img.getAttribute('src') || img.dataset.qrsImage;
+      if (!src) return;
+      e.stopPropagation();
+      e.preventDefault();
+      this.openImageModal(src, img.getAttribute('alt') || '');
+    });
   }
   private renderAppearanceSettings(anchor: HTMLElement) {
     const settings = this.plugin.state.settings;
@@ -1061,5 +1077,24 @@ export class ReaderView extends ItemView {
     height.oninput = () => { settings.lineHeight = Number(height.value); update(); this.run(() => this.plugin.persist()); }; height.onchange = () => this.run(() => this.plugin.persist());
     width.onchange = () => { settings.lineWidth = Number(width.value) as 28 | 36 | 44; update(); this.run(() => this.plugin.persist()); };
     panel.onkeydown = event => { if (event.key === 'Escape' && !event.isComposing) { event.preventDefault(); event.stopPropagation(); this.appearanceOpen = false; this.renderReader(true); } };
+  }
+}
+
+class ImageModal extends Modal {
+  constructor(app: any, private src: string, private alt: string) {
+    super(app);
+  }
+  onOpen() {
+    this.modalEl.addClass('qrs-image-modal');
+    this.contentEl.empty();
+    const wrapper = this.contentEl.createDiv('qrs-image-modal-wrap');
+    const img = wrapper.createEl('img', {
+      attr: {
+        src: this.src,
+        alt: this.alt || '放大查看图片',
+      },
+    });
+    // Click anywhere on wrapper or image to close
+    wrapper.onclick = () => this.close();
   }
 }
