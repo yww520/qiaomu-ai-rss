@@ -31,6 +31,7 @@ export class ChannelPicker extends Component {
     this.panel.createEl('label', { text: '搜索频道', cls: 'qrs-visually-hidden', attr: { for: searchId } });
     this.search = this.panel.createEl('input', { type: 'search', placeholder: '搜索频道…', attr: { id: searchId } });
     addSearchClear(this.search);
+    this.rows = this.panel.createDiv('qrs-channel-options');
     const current = this.choices.find(c => c.id === this.active);
     for (const c of this.choices) {
       if (c.section === '订阅分组') this.expanded.add(c.id.slice(7));
