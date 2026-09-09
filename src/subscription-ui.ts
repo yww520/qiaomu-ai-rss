@@ -125,8 +125,8 @@ export class SubscriptionManager extends Modal {
           syncBtn.disabled = true;
           const match = feed.url.match(/\/feed\/([^/.]+)\.xml/);
           if (match && match[1] && !match[1].startsWith('all')) {
-            new Notice(`正在触发云端同步抓取「${feed.name}」…`);
-            await client.updateMpArticles(match[1]);
+            new Notice(`正在触发微信读书同步抓取「${feed.name}」…`);
+            await client.updateMpArticles(match[1], feed.name);
           }
           await this.plugin.subscriptions.refresh([feed.id], this.contentEl.ownerDocument, true);
           const updatedCount = this.plugin.state.subscriptions.find(s => s.id === feed.id)?.entries.length || 0;
@@ -211,6 +211,9 @@ export class SubscriptionManager extends Modal {
               await this.plugin.subscriptions.add(res.feedUrl, '微信公众号', this.contentEl.ownerDocument);
               new Notice(`已成功订阅公众号：${acc.name}`);
               subBtn.setText('已关注');
+              void client.updateMpArticles(acc.fakeid || acc.id, acc.name).then(async () => {
+                await this.plugin.subscriptions.refresh([], this.contentEl.ownerDocument, true);
+              });
               this.changed();
             } catch (subErr) {
               new Notice(`订阅出错: ${subErr instanceof Error ? subErr.message : String(subErr)}`);
@@ -373,13 +376,13 @@ export class WeChatQrAuthModal extends Modal {
       this.timer = undefined;
     }
 
-    this.setTitle('微信扫码授权');
+    this.setTitle('微信读书扫码授权');
     const content = this.contentEl;
     content.empty();
     content.addClass('qrs-subscription-modal');
 
     const desc = content.createEl('p', {
-      text: '正在检查微信登录状态…',
+      text: '正在检查微信读书授权状态…',
       attr: { style: 'text-align: center; color: var(--text-muted); margin-bottom: 12px;' },
     });
     const imgContainer = content.createDiv({
@@ -387,20 +390,22 @@ export class WeChatQrAuthModal extends Modal {
     });
     imgContainer.createSpan({ text: '⏳ 正在连接服务…', attr: { style: 'color: var(--text-muted); font-size: 0.9em;' } });
 
-    // Check if already logged in
-    const currentStatus = await this.client.checkQrStatus();
+    // Check WeRead status
+    const wereadStatus = await this.client.checkWereadStatus();
     if (this.isClosed) return;
 
-    if (currentStatus.loginStatus) {
-      desc.setText('微信已处于授权登录状态，云端服务可正常抓取公众号文章！');
+    if (wereadStatus.configured) {
+      desc.setText('微信读书已处于授权登录状态，云端服务可正常稳定抓取公众号文章！');
       imgContainer.empty();
       const card = imgContainer.createDiv({
         attr: { style: 'display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; background: var(--background-secondary); border-radius: 8px; width: 100%; max-width: 280px;' },
       });
       card.createDiv({ text: '✅', attr: { style: 'font-size: 40px; margin-bottom: 8px;' } });
-      card.createDiv({ text: '微信已成功授权', attr: { style: 'font-weight: 600; font-size: 1.1em;' } });
-      card.createDiv({ text: '无需重复扫码，可直接搜索订阅公众号', attr: { style: 'font-size: 0.85em; color: var(--text-muted); margin-top: 4px;' } });
-
+      card.createDiv({ text: '微信读书已成功授权', attr: { style: 'font-weight: 600; font-size: 1.1em;' } });
+      if (wereadStatus.vid) {
+        card.createDiv({ text: `已绑定账号 VID: ${wereadStatus.vid}`, attr: { style: 'font-size: 0.85em; color: var(--text-muted); margin-top: 4px;' } });
+      }
+      card.createDiv({ text: '无需重复扫码，可直接搜索订阅公众号并自动抓取全文', attr: { style: 'font-size: 0.85em; color: var(--text-muted); margin-top: 4px;' } });
 
       const btnRow = content.createDiv({ attr: { style: 'text-align: center; margin-top: 16px; display: flex; gap: 8px; justify-content: center;' } });
       const doneBtn = btnRow.createEl('button', { text: '确定', cls: 'mod-cta' });
@@ -415,13 +420,11 @@ export class WeChatQrAuthModal extends Modal {
 
   private async loadQrFlow(content: HTMLElement, desc: HTMLElement, imgContainer: HTMLElement) {
     if (this.isClosed) return;
-    desc.setText('正在启动云端会话并生成二维码（约需 5~10 秒）…');
+    desc.setText('正在生成微信读书登录二维码…');
     imgContainer.empty();
     imgContainer.createSpan({ text: '⏳ 正在准备二维码…', attr: { style: 'color: var(--text-muted); font-size: 0.9em;' } });
 
-    const qrRes = await this.client.getQrCode((msg) => {
-      if (!this.isClosed) desc.setText(msg);
-    });
+    const qrRes = await this.client.getWereadQrCode();
 
     if (this.isClosed) return;
 
@@ -437,11 +440,11 @@ export class WeChatQrAuthModal extends Modal {
     }
 
     imgContainer.empty();
-    desc.setText('请使用手机微信扫一扫下方二维码，并在手机上确认登录：');
+    desc.setText('请使用手机微信扫一扫下方二维码，确认登录微信读书：');
     imgContainer.createEl('img', {
       attr: {
         src: qrRes.qrImageUrl,
-        alt: '微信扫码授权',
+        alt: '微信读书扫码授权',
         style: 'width: 220px; height: 220px; border-radius: 8px; border: 1px solid var(--background-modifier-border); background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.08); object-fit: contain;',
       },
     });
@@ -473,14 +476,15 @@ export class WeChatQrAuthModal extends Modal {
       }
       void (async () => {
         if (this.isClosed) return;
-        const status = await this.client.checkQrStatus();
+        const status = await this.client.checkWereadQrStatus();
         if (status.loginStatus && !this.isClosed) {
           this.isClosed = true;
           if (this.timer) {
             window.clearInterval(this.timer);
             this.timer = undefined;
           }
-          new Notice('🎉 微信扫码授权成功！');
+          await this.client.completeWereadQrLogin();
+          new Notice('🎉 微信读书扫码授权成功！已开启稳定公众号采集');
           this.close();
           this.onSuccess();
         }

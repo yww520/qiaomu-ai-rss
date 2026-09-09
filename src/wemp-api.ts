@@ -169,6 +169,78 @@ export class WeMpClient {
     }
   }
 
+  async getWereadQrCode(): Promise<{ ok: boolean; qrImageUrl: string; message: string }> {
+    try {
+      const headers = await this.getHeaders();
+      const url = `${this.baseUrl}/api/v1/wx/weread/qr/code`;
+      const res = await requestUrl({ url, method: 'GET', headers, throw: false });
+      if (res.status !== 200) {
+        return { ok: false, qrImageUrl: '', message: `请求微信读书二维码失败 (HTTP ${res.status})` };
+      }
+      const imgUrl = `${this.baseUrl}/static/weread_qrcode.png?t=${Date.now()}`;
+      const imgRes = await requestUrl({ url: imgUrl, method: 'GET', throw: false });
+      if (imgRes.status === 200 && imgRes.arrayBuffer) {
+        const base64 = arrayBufferToBase64(imgRes.arrayBuffer);
+        return {
+          ok: true,
+          qrImageUrl: `data:image/png;base64,${base64}`,
+          message: '获取成功',
+        };
+      }
+      return { ok: false, qrImageUrl: '', message: `下载微信读书二维码失败 (HTTP ${imgRes.status})` };
+    } catch (e) {
+      return { ok: false, qrImageUrl: '', message: e instanceof Error ? e.message : String(e) };
+    }
+  }
+
+  async checkWereadQrStatus(): Promise<{ loginStatus: boolean; msg?: string }> {
+    try {
+      const headers = await this.getHeaders();
+      const url = `${this.baseUrl}/api/v1/wx/weread/qr/status`;
+      const res = await requestUrl({ url, method: 'GET', headers, throw: false });
+      if (res.status === 200) {
+        const json = res.json as ApiResponse<{ login_status?: boolean; msg?: string }>;
+        return {
+          loginStatus: Boolean(json?.data?.login_status),
+          msg: json?.data?.msg,
+        };
+      }
+      return { loginStatus: false };
+    } catch {
+      return { loginStatus: false };
+    }
+  }
+
+  async completeWereadQrLogin(): Promise<boolean> {
+    try {
+      const headers = await this.getHeaders();
+      const url = `${this.baseUrl}/api/v1/wx/weread/qr/over`;
+      const res = await requestUrl({ url, method: 'GET', headers, throw: false });
+      return res.status === 200;
+    } catch {
+      return false;
+    }
+  }
+
+  async checkWereadStatus(): Promise<{ configured: boolean; vid?: string; cookieMasked?: string }> {
+    try {
+      const headers = await this.getHeaders();
+      const url = `${this.baseUrl}/api/v1/wx/weread`;
+      const res = await requestUrl({ url, method: 'GET', headers, throw: false });
+      if (res.status === 200) {
+        const json = res.json as ApiResponse<{ configured?: boolean; vid?: string; cookie_masked?: string }>;
+        return {
+          configured: Boolean(json?.data?.configured),
+          vid: json?.data?.vid,
+          cookieMasked: json?.data?.cookie_masked,
+        };
+      }
+      return { configured: false };
+    } catch {
+      return { configured: false };
+    }
+  }
+
   async listSubscribedMps(): Promise<WeMpAccount[]> {
     try {
       const headers = await this.getHeaders();
@@ -248,10 +320,29 @@ export class WeMpClient {
     }
   }
 
-  async updateMpArticles(mpId: string): Promise<{ ok: boolean; message: string }> {
-
+  async updateMpArticles(mpId: string, mpName?: string): Promise<{ ok: boolean; message: string }> {
     try {
       const headers = await this.getHeaders();
+      // First try WeRead collect which supports reliable direct crawling
+      try {
+        const wereadRes = await requestUrl({
+          url: `${this.baseUrl}/api/v1/wx/weread/collect`,
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            mp_id: mpId,
+            mp_name: mpName || '',
+            gather_content: true,
+          }),
+          throw: false,
+        });
+        if (wereadRes.status === 200) {
+          return { ok: true, message: '微信读书已成功采集最新文章并生成 RSS！' };
+        }
+      } catch {
+        // fallback to mps/update
+      }
+
       const url = `${this.baseUrl}/api/v1/wx/mps/update/${mpId}`;
       const res = await requestUrl({ url, method: 'GET', headers, throw: false });
       if (res.status === 200) {
