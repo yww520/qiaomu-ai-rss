@@ -31,8 +31,29 @@ export default class QiaomuRssPlugin extends Plugin {
     this.registerEvent(this.app.workspace.on('active-leaf-change', leaf => {
       if (leaf?.view instanceof MarkdownView && leaf.view.file) {
         this.lastNote = leaf.view.file; this.cleanNoteMarkers(leaf.view.file);
+        const view = leaf.view;
+        const actionKey = 'qrs-open-in-reader-btn';
+        if (!view.containerEl.querySelector(`.${actionKey}`)) {
+          const btn = view.addAction('book-open', '在沉浸阅读台中阅读 (画线/批注/AI总结)', () => {
+            if (view.file) void this.openCurrentNoteInReader(view.file);
+          });
+          btn.addClass(actionKey);
+        }
       }
     }));
+    this.registerEvent(
+      this.app.workspace.on('file-menu', (menu, file) => {
+        if (file instanceof TFile && file.extension === 'md') {
+          menu.addItem(item => {
+            item.setTitle('在沉浸阅读台中打开 (画线/批注/AI总结)')
+              .setIcon('book-open')
+              .onClick(() => {
+                void this.openCurrentNoteInReader(file);
+              });
+          });
+        }
+      })
+    );
     const data: unknown = await this.loadData();
     try {
       this.state = initialState(data);
@@ -52,6 +73,7 @@ export default class QiaomuRssPlugin extends Plugin {
     this.registerView(VIEW_TYPE, leaf => new ReaderView(leaf, this));
     this.registerView(DISCOVERY_VIEW_TYPE, leaf => new DiscoveryView(leaf, this));
     this.addCommand({ id: 'explore-subscriptions', name: '探索订阅', callback: () => { void this.openDiscovery(); } });
+    this.addRibbonIcon('book-open', '打开知识阅读台 (Reading Hub)', () => { void this.openReadingHub(); });
     this.addRibbonIcon('rss', '打开乔木 RSS 阅读器', () => { void this.openReader(); });
     this.addCommand({ id: 'open-reader', name: '打开乔木 RSS 阅读器', callback: () => { void this.openReader(); } });
     this.addCommand({

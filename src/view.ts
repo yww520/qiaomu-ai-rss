@@ -626,6 +626,9 @@ export class ReaderView extends ItemView {
       if (this.readingHubScope()) {
         this.entries = this.plugin.readingHub.entries(this.source);
         this.hasMore = false;
+        if (!this.bundle && this.entries.length > 0) {
+          void this.openArticle(this.entries[0]);
+        }
         return;
       }
       if (this.vaultScope()) { this.entries = this.plugin.vaultSources.entries(this.source.slice(7)); this.hasMore = false; return; }
