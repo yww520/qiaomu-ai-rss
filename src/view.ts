@@ -7,10 +7,10 @@ import { enableImageDrag, prepareMarkdownImageDrags } from './image-drag';
 import { SelectionCapture } from './selection';
 import { readingFonts, selectableFonts, fontFamily } from './fonts';
 import { articleFragment } from './content';
-import { canonicalEntryKey, modeLabels, modeSchema, readingFontSchema, safeUrl, titleOf, type ChannelState, type Bundle, type Entry, type Mode, type Highlight, type HighlightStyle, type HighlightColor } from './model';
+import { canonicalEntryKey, modeLabels, modeSchema, readingFontSchema, safeUrl, titleOf, type ChannelState, type Bundle, type Entry, type Mode, type Highlight, type HighlightStyle, type HighlightColor, type AiChatMessage } from './model';
 import { createHighlightId, wrapRangeWithHighlight, restoreHighlightsInContainer, removeHighlightFromContainer, updateHighlightInContainer, HighlightCard } from './highlights';
 import { WeMpClient } from './wemp-api';
-import { generateArticleSummary } from './ai-summary';
+import { generateArticleSummary, askArticleFollowUp } from './ai-summary';
 import { getTimelineGroup, type TimelineGroup } from './timeline';
 import { fetchWeChatArticleDirect } from './wechat-fetcher';
 import { READING_HUB_PREFIX, READING_HUB_VIEWS } from './reading-hub-source';
@@ -55,6 +55,10 @@ export class ReaderView extends ItemView {
   private summaryError: string | null = null;
   private summaryErrorEntryId: string | null = null;
   private summaryCollapsed = false;
+  private askingFollowUpEntryId: string | null = null;
+  private followUpError: string | null = null;
+  private followUpErrorEntryId: string | null = null;
+  private followUpInputDrafts = new Map<string, string>();
   private channelKey() { return JSON.stringify([this.plugin.state.settings.baseUrl, this.source]); }
   private closeSwipedWrap(wrap: HTMLElement) {
     const row = wrap.querySelector('.qrs-entry') as HTMLElement;
@@ -1403,7 +1407,18 @@ export class ReaderView extends ItemView {
   private async noteSummary(bundle: Bundle) {
     if (!bundle.entry.aiSummary) return;
     try {
-      const excerpt = `> 🤖 **AI 深度洞察与总结**：\n\n${bundle.entry.aiSummary}\n\n`;
+      let excerpt = `> 🤖 **AI 深度洞察与总结**：\n\n${bundle.entry.aiSummary}\n\n`;
+      if (bundle.entry.aiChat && bundle.entry.aiChat.length > 0) {
+        excerpt += `> 💬 **深度追问与解答**：\n>\n`;
+        for (const msg of bundle.entry.aiChat) {
+          if (msg.role === 'user') {
+            excerpt += `> ❓ **追问**：${msg.content}\n>\n`;
+          } else {
+            const indented = msg.content.split('\n').map(l => `> ${l}`).join('\n');
+            excerpt += `> 💡 **AI 解答**：\n${indented}\n>\n`;
+          }
+        }
+      }
       const result = await this.plugin.appendToDailyNote(bundle.entry, excerpt, this.mode);
       new Notice(result.added ? `已追加 AI 总结至文章笔记：${result.file.basename}` : `文章笔记中已有该总结：${result.file.basename}`);
     } catch (err) {
@@ -1411,10 +1426,211 @@ export class ReaderView extends ItemView {
     }
   }
 
+  private async submitFollowUpQuestion(bundle: Bundle, question: string) {
+    const q = question.trim();
+    if (!q) return;
+    const entry = bundle.entry;
+    if (!entry.aiChat) entry.aiChat = [];
+    entry.aiChat.push({ role: 'user', content: q, createdAt: Date.now() });
+
+    this.askingFollowUpEntryId = entry.id;
+    this.followUpError = null;
+    this.followUpErrorEntryId = null;
+    this.followUpInputDrafts.delete(entry.id);
+    this.renderReader(false);
+
+    try {
+      const settings = this.plugin.state.settings;
+      if (!settings.aiApiKey) {
+        throw new Error('请先在插件设置「AI 总结」中配置 API Key。');
+      }
+
+      const history = entry.aiChat.slice(0, -1).map(m => ({ role: m.role, content: m.content }));
+      const content = extractBundleText(bundle, this.mode);
+      const summary = entry.aiSummary || '';
+
+      const answer = await askArticleFollowUp(
+        titleOf(entry),
+        content,
+        summary,
+        history,
+        q,
+        {
+          apiUrl: settings.aiApiUrl,
+          apiKey: settings.aiApiKey,
+          model: settings.aiModel,
+        }
+      );
+
+      entry.aiChat.push({ role: 'assistant', content: answer, createdAt: Date.now() });
+      this.plugin.remember(bundle);
+      for (const sub of this.plugin.state.subscriptions) {
+        const item = sub.entries.find(e => e.id === entry.id);
+        if (item) item.aiChat = entry.aiChat;
+      }
+      await this.plugin.persist();
+    } catch (err) {
+      this.followUpError = err instanceof Error ? err.message : String(err);
+      this.followUpErrorEntryId = entry.id;
+      new Notice(`追问失败: ${this.followUpError}`, 5000);
+    } finally {
+      this.askingFollowUpEntryId = null;
+      this.renderReader(false);
+    }
+  }
+
+  private renderAiFollowUpSection(card: HTMLElement, bundle: Bundle) {
+    const chatSec = card.createDiv('qrs-ai-chat-section');
+    const chatHeader = chatSec.createDiv('qrs-ai-chat-header');
+    const titleSpan = chatHeader.createSpan('qrs-ai-chat-title');
+    setIcon(titleSpan.createSpan('qrs-ai-icon'), 'messages-square');
+    titleSpan.createSpan({ text: '深度追问与探讨' });
+
+    if (bundle.entry.aiChat && bundle.entry.aiChat.length > 0) {
+      const clearBtn = chatHeader.createEl('button', {
+        cls: 'qrs-ai-chat-clear-btn',
+        text: '清空追问',
+      });
+      clearBtn.onclick = async () => {
+        bundle.entry.aiChat = [];
+        this.plugin.remember(bundle);
+        for (const sub of this.plugin.state.subscriptions) {
+          const item = sub.entries.find(e => e.id === bundle.entry.id);
+          if (item) item.aiChat = [];
+        }
+        await this.plugin.persist();
+        this.renderReader(false);
+      };
+    }
+
+    const hasChat = Boolean(bundle.entry.aiChat && bundle.entry.aiChat.length > 0);
+
+    // Quick prompt chips when no chat history exists yet
+    if (!hasChat && this.askingFollowUpEntryId !== bundle.entry.id) {
+      const chipsWrap = chatSec.createDiv('qrs-ai-quick-chips');
+      const quickPrompts = [
+        '🎯 本文核心论点有何局限与盲区？',
+        '📊 文中有哪些关键论据与逻辑推导？',
+        '💼 对投资或实际业务有何实操建议？',
+        '🔍 请帮我提炼文中的 3 个核心问答',
+      ];
+      for (const p of quickPrompts) {
+        const chip = chipsWrap.createEl('button', { cls: 'qrs-ai-chip', text: p });
+        chip.onclick = () => void this.submitFollowUpQuestion(bundle, p);
+      }
+    }
+
+    // Message list
+    if (hasChat) {
+      const msgList = chatSec.createDiv('qrs-ai-chat-messages');
+      for (let i = 0; i < bundle.entry.aiChat!.length; i++) {
+        const msg = bundle.entry.aiChat![i];
+        if (msg.role === 'user') {
+          const userRow = msgList.createDiv('qrs-ai-msg qrs-ai-msg-user');
+          const userHeader = userRow.createDiv('qrs-ai-msg-header');
+          const userBadge = userHeader.createSpan('qrs-ai-msg-badge');
+          setIcon(userBadge.createSpan('qrs-ai-icon'), 'help-circle');
+          userBadge.createSpan({ text: '追问' });
+          userRow.createDiv({ cls: 'qrs-ai-msg-bubble', text: msg.content });
+        } else {
+          const botRow = msgList.createDiv('qrs-ai-msg qrs-ai-msg-assistant');
+          const botHeader = botRow.createDiv('qrs-ai-msg-header');
+          const botBadge = botHeader.createSpan('qrs-ai-msg-badge');
+          setIcon(botBadge.createSpan('qrs-ai-icon'), 'sparkles');
+          botBadge.createSpan({ text: 'AI 解答' });
+
+          const actions = botHeader.createDiv('qrs-ai-msg-actions');
+          const copyBtn = actions.createEl('button', { cls: 'qrs-ai-msg-btn', attr: { 'data-qrs-label': '复制解答' } });
+          setIcon(copyBtn, 'copy');
+          copyBtn.onclick = () => {
+            void navigator.clipboard.writeText(msg.content).then(() => new Notice('已复制解答'));
+          };
+
+          const noteBtn = actions.createEl('button', { cls: 'qrs-ai-msg-btn', attr: { 'data-qrs-label': '追加本条至笔记' } });
+          setIcon(noteBtn, 'notebook-pen');
+          noteBtn.onclick = async () => {
+            const qMsg = bundle.entry.aiChat?.[i - 1]?.role === 'user' ? bundle.entry.aiChat[i - 1].content : '';
+            let excerpt = '';
+            if (qMsg) excerpt += `> ❓ **追问**：${qMsg}\n>\n`;
+            const indented = msg.content.split('\n').map(l => `> ${l}`).join('\n');
+            excerpt += `> 💡 **AI 解答**：\n${indented}\n\n`;
+            const res = await this.plugin.appendToDailyNote(bundle.entry, excerpt, this.mode);
+            new Notice(res.added ? `已追加解答至笔记：${res.file.basename}` : `笔记中已有：${res.file.basename}`);
+          };
+
+          const bubble = botRow.createDiv('qrs-ai-msg-bubble qrs-ai-markdown-body');
+          void MarkdownRenderer.render(this.app, msg.content, bubble, '', this);
+        }
+      }
+    }
+
+    if (this.askingFollowUpEntryId === bundle.entry.id) {
+      const loadingEl = chatSec.createDiv('qrs-ai-chat-loading');
+      const spinner = loadingEl.createSpan('qrs-ai-spinner');
+      setIcon(spinner, 'loader-2');
+      loadingEl.createSpan({ text: '正在深入思考并组织追问解答…' });
+    }
+
+    if (this.followUpError && this.followUpErrorEntryId === bundle.entry.id) {
+      const errDiv = chatSec.createDiv('qrs-ai-chat-error');
+      setIcon(errDiv.createSpan('qrs-ai-icon'), 'alert-circle');
+      errDiv.createSpan({ text: `追问失败：${this.followUpError}` });
+    }
+
+    // Input bar
+    const inputBar = chatSec.createDiv('qrs-ai-chat-input-bar');
+    const textarea = inputBar.createEl('textarea', {
+      cls: 'qrs-ai-chat-textarea',
+      attr: {
+        rows: '1',
+        placeholder: '向 AI 追问关于本文的任何问题... (Enter 发送，Shift+Enter 换行)',
+      },
+    });
+    const savedDraft = this.followUpInputDrafts.get(bundle.entry.id) || '';
+    textarea.value = savedDraft;
+
+    const adjustHeight = () => {
+      textarea.style.height = 'auto';
+      textarea.style.height = `${Math.min(textarea.scrollHeight, 140)}px`;
+    };
+    adjustHeight();
+
+    textarea.addEventListener('input', () => {
+      this.followUpInputDrafts.set(bundle.entry.id, textarea.value);
+      adjustHeight();
+    });
+
+    const sendBtn = inputBar.createEl('button', {
+      cls: 'qrs-ai-chat-send-btn',
+      attr: { 'data-qrs-label': '发送追问' },
+    });
+    setIcon(sendBtn, 'arrow-up');
+    if (this.askingFollowUpEntryId === bundle.entry.id) {
+      sendBtn.disabled = true;
+      textarea.disabled = true;
+    }
+
+    const handleSend = () => {
+      const val = textarea.value.trim();
+      if (!val) return;
+      textarea.value = '';
+      this.followUpInputDrafts.delete(bundle.entry.id);
+      void this.submitFollowUpQuestion(bundle, val);
+    };
+
+    sendBtn.onclick = handleSend;
+    textarea.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        handleSend();
+      }
+    });
+  }
+
   private renderAiSummarySection(article: HTMLElement, bundle: Bundle) {
     const isSummarizing = this.summarizingEntryId === bundle.entry.id;
     const hasError = this.summaryError && this.summaryErrorEntryId === bundle.entry.id;
-    const hasSummary = !!bundle.entry.aiSummary;
+    const hasSummary = Boolean(bundle.entry.aiSummary);
 
     if (isSummarizing) {
       const card = article.createDiv({ cls: 'qrs-ai-summary-card is-loading' });
@@ -1489,6 +1705,7 @@ export class ReaderView extends ItemView {
       if (!this.summaryCollapsed) {
         const body = card.createDiv('qrs-ai-card-body');
         void MarkdownRenderer.render(this.app, bundle.entry.aiSummary!, body, '', this);
+        this.renderAiFollowUpSection(card, bundle);
       }
       return;
     }

@@ -11,11 +11,17 @@ export const translationSchema = z.object({
   titleZh: optionalText, summaryZh: optionalText,
   content: z.array(z.object({ source: optionalText, target: optionalText, sourceHtml: optionalText, targetHtml: optionalText })).nullish(),
 });
+export const aiChatMessageSchema = z.object({
+  role: z.enum(['user', 'assistant']),
+  content: z.string(),
+  createdAt: z.number().optional(),
+});
+export type AiChatMessage = z.infer<typeof aiChatMessageSchema>;
 export const entrySchema = z.object({
   id: z.string().min(1), sourceId: z.string(), origin: z.enum(['local', 'qiaomu', 'vault']).optional(), sourceName: optionalText, title: z.string(), titleZh: optionalText,
   markdownPath: optionalText, markdown: optionalText,
   link: optionalText, author: optionalText, published: optionalText, publishedTs: z.number().nullish(),
-  summary: optionalText, summaryZh: optionalText, aiSummary: optionalText, content: optionalText, image: optionalText,
+  summary: optionalText, summaryZh: optionalText, aiSummary: optionalText, aiChat: z.array(aiChatMessageSchema).nullish(), content: optionalText, image: optionalText,
   rewrite: rewriteSchema.nullish(),
   readStatus: optionalText,
   category: optionalText,
@@ -151,7 +157,11 @@ export function deduplicateEntriesList(entries: Entry[], deletedIds?: string[]):
     } else {
       const aLen = existing.content?.length || 0;
       const bLen = entry.content?.length || 0;
-      map.set(key, bLen > aLen ? entry : existing);
+      const chosen = bLen > aLen ? { ...entry } : { ...existing };
+      const other = bLen > aLen ? existing : entry;
+      if (!chosen.aiSummary && other.aiSummary) chosen.aiSummary = other.aiSummary;
+      if (!chosen.aiChat?.length && other.aiChat?.length) chosen.aiChat = other.aiChat;
+      map.set(key, chosen);
     }
   }
   return Array.from(map.values()).sort((a, b) => (b.publishedTs || 0) - (a.publishedTs || 0));
