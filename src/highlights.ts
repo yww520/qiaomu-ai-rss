@@ -1,5 +1,5 @@
 import { setIcon, setTooltip } from 'obsidian';
-import type { Highlight, HighlightStyle } from './model';
+import type { Highlight, HighlightStyle, HighlightColor } from './model';
 
 export function createHighlightId(): string {
   return `hl-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
@@ -60,19 +60,22 @@ export function wrapRangeWithHighlight(doc: Document, range: Range, highlight: H
 
     if (!targetNode.textContent?.trim().length) continue;
 
+    const color = highlight.color || 'yellow';
     const parent = targetNode.parentElement;
     if (parent && parent.classList.contains('qrs-hl')) {
       parent.dataset.hlId = highlight.id;
       parent.dataset.hlStyle = highlight.style;
-      parent.className = `qrs-hl qrs-hl-${highlight.style}${highlight.note ? ' qrs-hl-has-note' : ''}`;
+      parent.dataset.hlColor = color;
+      parent.className = `qrs-hl qrs-hl-${highlight.style} qrs-hl-color-${color}${highlight.note ? ' qrs-hl-has-note' : ''}`;
       marks.push(parent);
       continue;
     }
 
     const mark = doc.defaultView ? doc.defaultView.document.createElement('mark') : doc.createElement('mark');
-    mark.className = `qrs-hl qrs-hl-${highlight.style}${highlight.note ? ' qrs-hl-has-note' : ''}`;
+    mark.className = `qrs-hl qrs-hl-${highlight.style} qrs-hl-color-${color}${highlight.note ? ' qrs-hl-has-note' : ''}`;
     mark.dataset.hlId = highlight.id;
     mark.dataset.hlStyle = highlight.style;
+    mark.dataset.hlColor = color;
     if (targetNode.parentNode) {
       targetNode.parentNode.insertBefore(mark, targetNode);
       mark.appendChild(targetNode);
@@ -170,10 +173,12 @@ export function removeHighlightFromContainer(container: HTMLElement, highlightId
  */
 export function updateHighlightInContainer(container: HTMLElement, highlight: Highlight): void {
   const marks = container.querySelectorAll(`mark[data-hl-id="${highlight.id}"]`);
+  const color = highlight.color || 'yellow';
   marks.forEach(el => {
     const mark = el as HTMLElement;
     mark.dataset.hlStyle = highlight.style;
-    mark.className = `qrs-hl qrs-hl-${highlight.style}${highlight.note ? ' qrs-hl-has-note' : ''}`;
+    mark.dataset.hlColor = color;
+    mark.className = `qrs-hl qrs-hl-${highlight.style} qrs-hl-color-${color}${highlight.note ? ' qrs-hl-has-note' : ''}`;
   });
 }
 
@@ -249,6 +254,31 @@ export class HighlightCard {
       this.close();
       await this.options.onDelete(highlight.id);
     };
+
+    const colors: Array<{ id: HighlightColor; label: string; cls: string }> = [
+      { id: 'yellow', label: '黄色高亮', cls: 'qrs-color-yellow' },
+      { id: 'green', label: '绿色高亮', cls: 'qrs-color-green' },
+      { id: 'blue', label: '蓝色高亮', cls: 'qrs-color-blue' },
+      { id: 'purple', label: '紫色高亮', cls: 'qrs-color-purple' },
+      { id: 'red', label: '红色高亮', cls: 'qrs-color-red' },
+      { id: 'orange', label: '橙色高亮', cls: 'qrs-color-orange' },
+    ];
+    const currentColor = highlight.color || 'yellow';
+    const colorPicker = card.createDiv({ cls: 'qrs-hl-color-picker' });
+    for (const c of colors) {
+      const colorBtn = colorPicker.createEl('button', {
+        cls: `qrs-hl-color-btn ${c.cls}${currentColor === c.id ? ' is-active' : ''}`,
+        attr: { 'aria-label': c.label },
+      });
+      setTooltip(colorBtn, c.label);
+      colorBtn.onclick = async (e) => {
+        e.stopPropagation();
+        highlight.color = c.id;
+        colorPicker.querySelectorAll('.qrs-hl-color-btn').forEach(b => b.removeClass('is-active'));
+        colorBtn.addClass('is-active');
+        await this.options.onUpdate(highlight);
+      };
+    }
 
     const noteArea = card.createEl('textarea', {
       cls: 'qrs-hl-note-input',

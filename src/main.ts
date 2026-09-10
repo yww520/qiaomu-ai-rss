@@ -13,10 +13,12 @@ import { Subscriptions } from './subscriptions';
 import { SubscriptionManager, WeChatQrAuthModal, type SubscriptionTab } from './subscription-ui';
 import { WeMpClient } from './wemp-api';
 import { DiscoveryView, DISCOVERY_VIEW_TYPE } from './discovery-view';
+import { ReadingHubSource } from './reading-hub-source';
 
 export default class QiaomuRssPlugin extends Plugin {
   fonts = new ReadingFonts();
   vaultSources = new VaultSources(this.app);
+  readingHub = new ReadingHubSource(this.app);
   state: State = initialState(null);
   images!: LocalImages;
   subscriptions!: Subscriptions;
@@ -52,6 +54,25 @@ export default class QiaomuRssPlugin extends Plugin {
     this.addCommand({ id: 'explore-subscriptions', name: '探索订阅', callback: () => { void this.openDiscovery(); } });
     this.addRibbonIcon('rss', '打开乔木 RSS 阅读器', () => { void this.openReader(); });
     this.addCommand({ id: 'open-reader', name: '打开乔木 RSS 阅读器', callback: () => { void this.openReader(); } });
+    this.addCommand({
+      id: 'open-reading-hub',
+      name: '打开知识阅读台 (Reading Hub)',
+      callback: () => { void this.openReadingHub(); },
+    });
+    this.addCommand({
+      id: 'open-current-in-reader',
+      name: '在沉浸阅读台中阅读当前笔记',
+      checkCallback: (checking: boolean) => {
+        const activeFile = this.app.workspace.getActiveFile();
+        if (activeFile && activeFile.extension === 'md') {
+          if (!checking) {
+            void this.openCurrentNoteInReader(activeFile);
+          }
+          return true;
+        }
+        return false;
+      },
+    });
     this.addSettingTab(new RssSettings(this.app, this));
     this.registerEvent(this.app.workspace.on('file-open', file => { if (file?.extension === 'md') this.cleanNoteMarkers(file); }));
     this.app.workspace.onLayoutReady(() => {
@@ -90,6 +111,17 @@ export default class QiaomuRssPlugin extends Plugin {
     registerLinks(document);
     this.registerEvent(this.app.workspace.on('window-open', (_window, win) => registerLinks(win.document)));
     this.registerObsidianProtocolHandler('qiaomu-ai-rss', params => {
+      if (params.view === 'reading-hub') {
+        void this.openReadingHub(params.source || 'reading-hub:today');
+        return;
+      }
+      if (params.file) {
+        const file = this.app.vault.getAbstractFileByPath(params.file);
+        if (file instanceof TFile) {
+          void this.openCurrentNoteInReader(file);
+          return;
+        }
+      }
       void this.openSavedArticle(params.article || '', params.mode || 'original').catch(() => new Notice('这篇文章的本地副本不存在。'));
     });
   }
@@ -107,6 +139,20 @@ export default class QiaomuRssPlugin extends Plugin {
       await leaf.loadIfDeferred();
       await this.app.workspace.revealLeaf(leaf);
     } catch { new Notice('无法打开 RSS 阅读器。'); }
+  }
+  async openReadingHub(viewId = 'reading-hub:today') {
+    await this.openReader();
+    const view = this.app.workspace.getLeavesOfType(VIEW_TYPE)[0]?.view;
+    if (view instanceof ReaderView) {
+      view.showReadingHub(viewId);
+    }
+  }
+  async openCurrentNoteInReader(file: TFile) {
+    await this.openReader();
+    const view = this.app.workspace.getLeavesOfType(VIEW_TYPE)[0]?.view;
+    if (view instanceof ReaderView) {
+      await view.showVaultFile(file);
+    }
   }
   persist(): Promise<void> {
     this.saving = this.saving.catch(() => undefined).then(() => this.saveData(this.state));

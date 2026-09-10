@@ -1,18 +1,19 @@
 import { addSearchClear } from './search-clear';
 import { ChannelPicker, channelMark, type ChannelChoice } from './channel-picker';
-import { Component, MarkdownRenderer, ItemView, Menu, Modal, Notice, Platform, setIcon, type WorkspaceLeaf } from 'obsidian';
+import { Component, MarkdownRenderer, ItemView, Menu, Modal, Notice, Platform, setIcon, TFile, type WorkspaceLeaf } from 'obsidian';
 import type QiaomuRssPlugin from './main';
 import { vaultSourceId } from './vault-source';
 import { enableImageDrag, prepareMarkdownImageDrags } from './image-drag';
 import { SelectionCapture } from './selection';
 import { readingFonts, selectableFonts, fontFamily } from './fonts';
 import { articleFragment } from './content';
-import { canonicalEntryKey, modeLabels, modeSchema, readingFontSchema, safeUrl, titleOf, type ChannelState, type Bundle, type Entry, type Mode, type Highlight, type HighlightStyle } from './model';
+import { canonicalEntryKey, modeLabels, modeSchema, readingFontSchema, safeUrl, titleOf, type ChannelState, type Bundle, type Entry, type Mode, type Highlight, type HighlightStyle, type HighlightColor } from './model';
 import { createHighlightId, wrapRangeWithHighlight, restoreHighlightsInContainer, removeHighlightFromContainer, updateHighlightInContainer, HighlightCard } from './highlights';
 import { WeMpClient } from './wemp-api';
 import { generateArticleSummary } from './ai-summary';
 import { getTimelineGroup, type TimelineGroup } from './timeline';
 import { fetchWeChatArticleDirect } from './wechat-fetcher';
+import { READING_HUB_PREFIX, READING_HUB_VIEWS } from './reading-hub-source';
 export const VIEW_TYPE = 'qiaomu-ai-rss-reader';
 type Filter = 'all' | 'unread' | 'favorites';
 function feedHost(url: string) { try { return new URL(url).hostname; } catch { return 'RSS'; } }
@@ -216,7 +217,7 @@ export class ReaderView extends ItemView {
     return this.plugin.state.highlights[this.bundle.entry.id] || [];
   }
 
-  async addHighlight(range: Range, text: string, style: HighlightStyle, note = ''): Promise<void> {
+  async addHighlight(range: Range, text: string, style: HighlightStyle, color: HighlightColor = 'yellow', note = ''): Promise<void> {
     if (!this.bundle) return;
     const entryId = this.bundle.entry.id;
     const id = createHighlightId();
@@ -225,6 +226,7 @@ export class ReaderView extends ItemView {
       entryId,
       text,
       style,
+      color,
       note,
       createdAt: Date.now(),
     };
@@ -350,16 +352,28 @@ export class ReaderView extends ItemView {
       };
       return [
         {
-          label: '高亮',
-          icon: 'highlighter',
-          className: 'qrs-btn-hl',
-          save: ctx => this.addHighlight(ctx.range, ctx.text, 'highlight'),
+          label: '黄色高亮',
+          colorDot: 'yellow',
+          className: 'qrs-btn-hl-yellow',
+          save: ctx => this.addHighlight(ctx.range, ctx.text, 'highlight', 'yellow'),
+        },
+        {
+          label: '绿色高亮',
+          colorDot: 'green',
+          className: 'qrs-btn-hl-green',
+          save: ctx => this.addHighlight(ctx.range, ctx.text, 'highlight', 'green'),
+        },
+        {
+          label: '蓝色高亮',
+          colorDot: 'blue',
+          className: 'qrs-btn-hl-blue',
+          save: ctx => this.addHighlight(ctx.range, ctx.text, 'highlight', 'blue'),
         },
         {
           label: '划线',
           icon: 'underline',
           className: 'qrs-btn-underline',
-          save: ctx => this.addHighlight(ctx.range, ctx.text, 'underline'),
+          save: ctx => this.addHighlight(ctx.range, ctx.text, 'underline', 'red'),
         },
         {
           label: '重点加粗',
@@ -371,7 +385,7 @@ export class ReaderView extends ItemView {
           label: '写想法 / 批注',
           icon: 'message-square-plus',
           className: 'qrs-btn-note',
-          save: ctx => this.addHighlight(ctx.range, ctx.text, 'highlight', '__OPEN_CARD__'),
+          save: ctx => this.addHighlight(ctx.range, ctx.text, 'highlight', 'yellow', '__OPEN_CARD__'),
         },
         {
           label: '追加到今日日记',
@@ -401,12 +415,13 @@ export class ReaderView extends ItemView {
     this.unreadSession.clear();
     this.closed = false; this.listVersion++; this.articleVersion++; this.clearThumbnails();
     const remembered = this.plugin.state.settings.lastSource;
+    const isReadingHub = remembered.startsWith(READING_HUB_PREFIX);
     const localExists = this.plugin.state.subscriptions.some(feed => feed.id === remembered);
     const groupExists = remembered.startsWith('@group:') && this.plugin.state.subscriptions.some(feed => feed.group === remembered.slice(7));
-    this.focused = false; this.source = remembered === '@local' || this.plugin.state.settings.markdownFolders.some(folder => vaultSourceId(folder) === remembered) || groupExists || localExists || this.plugin.state.sources.some(source => source.id === remembered) ? remembered : '';
+    this.focused = false; this.source = remembered === '@local' || isReadingHub || this.plugin.state.settings.markdownFolders.some(folder => vaultSourceId(folder) === remembered) || groupExists || localExists || this.plugin.state.sources.some(source => source.id === remembered) ? remembered : '';
     this.cursor = ''; this.bundle = null; this.loading = false; this.hasMore = false;
     this.mode = this.plugin.state.settings.defaultMode;
-    this.entries = this.personalScope() ? this.localEntries() : this.source ? [] : this.plugin.state.entries;
+    this.entries = this.readingHubScope() ? this.plugin.readingHub?.entries(this.source) || [] : this.personalScope() ? this.localEntries() : this.source ? [] : this.plugin.state.entries;
     this.build();
     const saved = this.plugin.state.channelStates[this.channelKey()];
     if (saved) { this.restoreChannel(saved); if (!this.entries.length) void this.loadEntries(); }
@@ -488,7 +503,17 @@ export class ReaderView extends ItemView {
   private channelChoices(): ChannelChoice[] {
     const feeds = this.plugin.state.subscriptions;
     const groups = [...new Set(feeds.map(feed => feed.group).filter(Boolean))].sort();
+    const readingHubChoices: ChannelChoice[] = this.plugin.readingHub?.isAvailable()
+      ? READING_HUB_VIEWS.map(v => ({
+          id: v.id,
+          name: v.name,
+          section: '阅读台' as const,
+          subtitle: v.subtitle,
+          icon: v.icon,
+        }))
+      : [];
     return [
+      ...readingHubChoices,
       { id: '', name: '乔木精选', section: '聚合', subtitle: '乔木筛选的高质量内容', icon: 'tree-deciduous' },
       { id: '@local', name: '我的订阅', section: '聚合', subtitle: `${feeds.length} 个个人订阅源`, icon: 'rss' },
       ...groups.map(group => ({ id: `@group:${group}`, name: group, section: '订阅分组' as const,
@@ -500,6 +525,7 @@ export class ReaderView extends ItemView {
       ...this.plugin.state.settings.markdownFolders.map(folder => ({ id: vaultSourceId(folder), name: folder === '/' ? '整个库' : folder.split('/').at(-1)!, section: '库内文件夹' as const, subtitle: folder, icon: folder.endsWith('.md') ? 'file-text' : 'folder-open' })),
     ];
   }
+  private readingHubScope() { return this.source.startsWith(READING_HUB_PREFIX); }
   private vaultScope() { return this.source.startsWith('@vault:'); }
   private personalScope() { return this.source === '@local' || this.source.startsWith('@group:') || this.source.startsWith('local:'); }
   private selectedFeeds() {
@@ -510,6 +536,13 @@ export class ReaderView extends ItemView {
   showSubscriptions() { this.selectSource('@local', false); }
   showSubscription(id: string) {
     if (this.plugin.state.subscriptions.some(feed => feed.id === id)) this.selectSource(id, false);
+  }
+  showReadingHub(viewId = 'reading-hub:today') {
+    this.selectSource(viewId, true);
+  }
+  async showVaultFile(file: TFile) {
+    const entry = this.plugin.readingHub.fileToEntry(file);
+    await this.openArticle(entry);
   }
   private pickChannel() {
     if (this.channelPicker) { this.channelPicker.close(); return; }
@@ -526,7 +559,7 @@ export class ReaderView extends ItemView {
     this.plugin.state.settings.lastSource = source; this.run(() => this.plugin.persist());
     this.bundle = null; this.articleVersion++; this.focused = false; this.contentEl.removeClass('qrs-focus');
     this.contentEl.removeClass('qrs-focus'); this.contentEl.removeClass('qrs-has-article');
-    this.entries = this.personalScope() ? this.localEntries() : source ? [] : this.plugin.state.entries;
+    this.entries = this.readingHubScope() ? this.plugin.readingHub?.entries(source) || [] : this.personalScope() ? this.localEntries() : source ? [] : this.plugin.state.entries;
     this.status.setText(''); this.renderChannel();
     const saved = this.plugin.state.channelStates[this.channelKey()];
     if (saved) { this.restoreChannel(saved); if (!this.entries.length && refresh) void this.loadEntries(); return; }
@@ -590,6 +623,11 @@ export class ReaderView extends ItemView {
     const version = ++this.listVersion; this.loading = true; this.status.setText(''); this.refreshButton.addClass('is-loading');
     const state = this.plugin.state;
     try {
+      if (this.readingHubScope()) {
+        this.entries = this.plugin.readingHub.entries(this.source);
+        this.hasMore = false;
+        return;
+      }
       if (this.vaultScope()) { this.entries = this.plugin.vaultSources.entries(this.source.slice(7)); this.hasMore = false; return; }
       if (this.personalScope()) {
         const feeds = this.selectedFeeds();
@@ -643,13 +681,17 @@ export class ReaderView extends ItemView {
   }
   private visibleEntries(): Entry[] {
     const state = this.plugin.state;
-    const raw = this.filter === 'favorites' ? Object.values(state.favorites).map(b => b.entry) : this.entries;
+    const raw = this.filter === 'favorites' ? (this.readingHubScope() ? this.entries.filter(e => e.readStatus === '精读' || state.favorites[e.id]) : Object.values(state.favorites).map(b => b.entry)) : this.entries;
     const entries = this.deduplicateEntries(raw);
     const query = this.query.trim().toLocaleLowerCase();
-    return entries.filter(entry => (this.vaultScope() ? entry.origin === 'vault' && entry.sourceId === this.source : this.personalScope()
+    return entries.filter(entry => (this.readingHubScope()
+      ? entry.origin === 'vault' && (entry.sourceId === this.source || this.source === 'reading-hub:all')
+      : this.vaultScope()
+      ? entry.origin === 'vault' && entry.sourceId === this.source
+      : this.personalScope()
       ? entry.origin === 'local' && (this.source === '@local' || this.selectedFeeds().some(feed => feed.id === entry.sourceId))
       : entry.origin !== 'local' && entry.origin !== 'vault' && (!this.source || entry.sourceId === this.source)) &&
-      (this.filter !== 'unread' || !state.readIds.includes(entry.id) || this.unreadSession.has(entry.id) || entry.id === this.bundle?.entry.id) &&
+      (this.filter !== 'unread' || (entry.readStatus ? entry.readStatus === '未读' : !state.readIds.includes(entry.id)) || this.unreadSession.has(entry.id) || entry.id === this.bundle?.entry.id) &&
       (!query || `${titleOf(entry)} ${entry.title} ${entry.summary || ''} ${this.sourceName(entry)}`.toLocaleLowerCase().includes(query)));
   }
   private sourceName(entry: Entry) {
@@ -715,6 +757,9 @@ export class ReaderView extends ItemView {
     meta.createSpan({ text: this.sourceName(entry), cls: 'qrs-source-name' });
     const date = entry.publishedTs ? new Date(entry.publishedTs) : entry.published ? new Date(entry.published) : null;
     meta.createSpan({ cls: 'qrs-date', text: date && !Number.isNaN(date.getTime()) ? date.toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' }) : '' });
+    if (entry.readStatus && entry.readStatus !== '未读') {
+      meta.createSpan({ cls: `qrs-status-tag status-${entry.readStatus}`, text: entry.readStatus });
+    }
     const title = copy.createDiv('qrs-entry-title');
     title.createSpan({ cls: read ? 'qrs-read-dot' : 'qrs-unread-dot', attr: { 'aria-hidden': 'true' } });
     title.createSpan({ cls: 'qrs-visually-hidden', text: read ? '已读' : '未读' });
@@ -940,7 +985,10 @@ export class ReaderView extends ItemView {
       return;
     }
     try {
-      const { bundle, warnings } = entry.origin === 'vault' ? { bundle: await this.plugin.vaultSources.article(entry), warnings: [] } : await this.plugin.api().article(entry.id);
+      const isReadingHubEntry = entry.sourceId?.startsWith(READING_HUB_PREFIX) || this.readingHubScope();
+      const { bundle, warnings } = entry.origin === 'vault'
+        ? { bundle: isReadingHubEntry ? await this.plugin.readingHub.article(entry) : await this.plugin.vaultSources.article(entry), warnings: [] }
+        : await this.plugin.api().article(entry.id);
       if (this.closed || version !== this.articleVersion) return;
       this.bundle = bundle; this.message = warnings.join('；'); this.plugin.remember(bundle); this.run(() => this.plugin.persist());
     } catch (error) {
@@ -1142,6 +1190,32 @@ export class ReaderView extends ItemView {
       await this.plugin.persist(); this.renderReader(true); this.renderList();
     }));
     readButton.setAttribute('aria-pressed', String(read));
+
+    // If vault / reading-hub document, show status pills: 未读 / 已读 / 精读 / 跳过
+    if (bundle.entry.origin === 'vault' && bundle.entry.markdownPath) {
+      const statusGroup = actions.createDiv({ cls: 'qrs-status-group' });
+      const currentStatus = bundle.entry.readStatus || (this.plugin.state.readIds.includes(bundle.entry.id) ? '已读' : '未读');
+      for (const st of ['未读', '已读', '精读', '跳过']) {
+        const btn = statusGroup.createEl('button', {
+          cls: `qrs-status-btn${currentStatus === st ? ' is-active' : ''}`,
+          text: st,
+          attr: { title: `标记为「${st}」` },
+        });
+        btn.onclick = () => this.run(async () => {
+          bundle.entry.readStatus = st;
+          await this.plugin.readingHub.updateReadStatus(bundle.entry.markdownPath!, st);
+          if (st === '已读' || st === '跳过') {
+            this.plugin.state.readIds = [...new Set([...this.plugin.state.readIds, bundle.entry.id])].slice(-5000);
+          } else if (st === '未读') {
+            this.plugin.state.readIds = this.plugin.state.readIds.filter(id => id !== bundle.entry.id);
+          }
+          await this.plugin.persist();
+          new Notice(`已更新阅读状态为：${st}`);
+          this.renderReader(true);
+          this.renderList();
+        });
+      }
+    }
     this.addIconButton(actions, 'notebook-pen', '记入文章笔记', () => this.noteCurrent());
     this.addIconButton(actions, 'refresh-cw', '重新拉取正文', () => void this.refreshCurrentArticle());
 

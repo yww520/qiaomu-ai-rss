@@ -7,7 +7,8 @@ export interface CaptureContext {
 }
 export interface CaptureAction {
   label: string;
-  icon: string;
+  icon?: string;
+  colorDot?: string;
   disabled?: boolean;
   className?: string;
   save: (context: CaptureContext) => Promise<void> | void;
@@ -63,7 +64,12 @@ export class SelectionCapture {
         cls: action.className || '',
         attr: { 'aria-label': action.label }
       });
-      setIcon(button, action.icon); setTooltip(button, action.label);
+      if (action.colorDot) {
+        button.createSpan({ cls: `qrs-color-dot qrs-color-dot-${action.colorDot}` });
+      } else if (action.icon) {
+        setIcon(button, action.icon);
+      }
+      setTooltip(button, action.label);
       button.disabled = !!action.disabled;
       button.onpointerdown = event => event.preventDefault();
       button.onclick = () => {

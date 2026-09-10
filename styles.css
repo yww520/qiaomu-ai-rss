@@ -274,38 +274,108 @@
 .qrs-selection-popup button:hover { background:var(--background-modifier-hover); color:var(--text-accent); }
 .qrs-selection-popup button svg { width:16px; height:16px; }
 .qrs-selection-popup .qrs-btn-hl:hover { color:#eab308; }
-.qrs-selection-popup .qrs-btn-underline:hover { color:#3b82f6; }
+.qrs-selection-popup .qrs-btn-hl-yellow:hover { color:#eab308; }
+.qrs-selection-popup .qrs-btn-hl-green:hover { color:#10b981; }
+.qrs-selection-popup .qrs-btn-hl-blue:hover { color:#3b82f6; }
+.qrs-selection-popup .qrs-btn-hl-purple:hover { color:#a855f7; }
+.qrs-selection-popup .qrs-btn-hl-red:hover { color:#ef4444; }
+.qrs-selection-popup .qrs-btn-underline:hover { color:#ef4444; }
 .qrs-selection-popup .qrs-btn-bold:hover { color:var(--text-normal); }
 .qrs-selection-popup .qrs-btn-note:hover { color:#10b981; }
+
+.qrs-color-dot {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.35);
+  vertical-align: middle;
+}
+.qrs-color-dot-yellow { background-color: #facc15; }
+.qrs-color-dot-green { background-color: #4ade80; }
+.qrs-color-dot-blue { background-color: #60a5fa; }
+.qrs-color-dot-purple { background-color: #c084fc; }
+.qrs-color-dot-red { background-color: #f87171; }
+.qrs-color-dot-orange { background-color: #fb923c; }
 
 /* Highlights in prose */
 .qrs-prose mark.qrs-hl {
   cursor: pointer;
   border-radius: 2px;
-  transition: filter 0.15s;
+  transition: filter 0.15s, background-color 0.15s;
   padding: 1px 2px;
 }
 .qrs-prose mark.qrs-hl:hover {
   filter: brightness(0.92);
 }
-.qrs-prose mark.qrs-hl-highlight {
-  background-color: rgba(254, 240, 138, 0.65);
+
+/* Multi-color highlights */
+.qrs-prose mark.qrs-hl-highlight,
+.qrs-prose mark.qrs-hl-color-yellow {
+  background-color: rgba(254, 240, 138, 0.7);
   color: inherit;
 }
-.theme-dark .qrs-prose mark.qrs-hl-highlight {
-  background-color: rgba(234, 179, 8, 0.35);
+.theme-dark .qrs-prose mark.qrs-hl-highlight,
+.theme-dark .qrs-prose mark.qrs-hl-color-yellow {
+  background-color: rgba(234, 179, 8, 0.38);
+}
+
+.qrs-prose mark.qrs-hl-color-green {
+  background-color: rgba(187, 247, 208, 0.75);
   color: inherit;
 }
+.theme-dark .qrs-prose mark.qrs-hl-color-green {
+  background-color: rgba(34, 197, 94, 0.35);
+}
+
+.qrs-prose mark.qrs-hl-color-blue {
+  background-color: rgba(191, 219, 254, 0.75);
+  color: inherit;
+}
+.theme-dark .qrs-prose mark.qrs-hl-color-blue {
+  background-color: rgba(59, 130, 246, 0.35);
+}
+
+.qrs-prose mark.qrs-hl-color-purple {
+  background-color: rgba(233, 213, 255, 0.75);
+  color: inherit;
+}
+.theme-dark .qrs-prose mark.qrs-hl-color-purple {
+  background-color: rgba(168, 85, 247, 0.35);
+}
+
+.qrs-prose mark.qrs-hl-color-red {
+  background-color: rgba(254, 202, 202, 0.75);
+  color: inherit;
+}
+.theme-dark .qrs-prose mark.qrs-hl-color-red {
+  background-color: rgba(239, 68, 68, 0.35);
+}
+
+.qrs-prose mark.qrs-hl-color-orange {
+  background-color: rgba(254, 215, 170, 0.75);
+  color: inherit;
+}
+.theme-dark .qrs-prose mark.qrs-hl-color-orange {
+  background-color: rgba(249, 115, 22, 0.35);
+}
+
 .qrs-prose mark.qrs-hl-underline {
-  background-color: transparent;
+  background-color: transparent !important;
   text-decoration: underline;
-  text-decoration-color: #3b82f6;
+  text-decoration-color: #ef4444;
   text-decoration-thickness: 2px;
   text-underline-offset: 4px;
   color: inherit;
 }
+.qrs-prose mark.qrs-hl-underline.qrs-hl-color-blue { text-decoration-color: #3b82f6; }
+.qrs-prose mark.qrs-hl-underline.qrs-hl-color-green { text-decoration-color: #10b981; }
+.qrs-prose mark.qrs-hl-underline.qrs-hl-color-yellow { text-decoration-color: #eab308; }
+.qrs-prose mark.qrs-hl-underline.qrs-hl-color-purple { text-decoration-color: #a855f7; }
+.qrs-prose mark.qrs-hl-underline.qrs-hl-color-orange { text-decoration-color: #f97316; }
+
 .qrs-prose mark.qrs-hl-bold {
-  background-color: transparent;
+  background-color: transparent !important;
   font-weight: 700;
   color: inherit;
 }
@@ -315,6 +385,101 @@
   vertical-align: super;
   line-height: 0;
   margin-left: 2px;
+  opacity: 0.85;
+}
+
+/* Color picker in highlight card */
+.qrs-hl-color-picker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 2px;
+}
+.qrs-hl-color-btn {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+  margin: 0;
+  box-shadow: 0 0 2px rgba(0,0,0,0.25);
+  transition: transform 0.15s, border-color 0.15s;
+}
+.qrs-hl-color-btn:hover {
+  transform: scale(1.18);
+}
+.qrs-hl-color-btn.is-active {
+  border-color: var(--text-normal);
+  transform: scale(1.12);
+  box-shadow: 0 0 0 1px var(--interactive-accent);
+}
+.qrs-hl-color-btn.qrs-color-yellow { background: #facc15; }
+.qrs-hl-color-btn.qrs-color-green { background: #4ade80; }
+.qrs-hl-color-btn.qrs-color-blue { background: #60a5fa; }
+.qrs-hl-color-btn.qrs-color-purple { background: #c084fc; }
+.qrs-hl-color-btn.qrs-color-red { background: #f87171; }
+.qrs-hl-color-btn.qrs-color-orange { background: #fb923c; }
+
+/* Status group in reader toolbar */
+.qrs-status-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  background: var(--background-secondary);
+  border-radius: 8px;
+  border: 1px solid var(--background-modifier-border);
+}
+.qrs-status-btn {
+  font-size: 11px;
+  line-height: 1;
+  padding: 4px 6px;
+  border-radius: 5px;
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  transition: all 0.15s ease;
+}
+.qrs-status-btn:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+.qrs-status-btn.is-active {
+  font-weight: 600;
+  background: var(--background-primary);
+  box-shadow: var(--shadow-s);
+}
+.qrs-status-btn.is-active.is-unread { color: #3b82f6; }
+.qrs-status-btn.is-active.is-read { color: #10b981; }
+.qrs-status-btn.is-active.is-starred { color: #f59e0b; }
+.qrs-status-btn.is-active.is-skip { color: #6b7280; }
+
+.qrs-status-tag {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--background-modifier-form-field);
+  color: var(--text-muted);
+  display: inline-block;
+  vertical-align: middle;
+}
+.qrs-status-tag.status-精读 {
+  background: rgba(234, 179, 8, 0.15);
+  color: #ca8a04;
+  font-weight: 600;
+}
+.qrs-status-tag.status-已读 {
+  color: var(--text-faint);
+}
+.qrs-status-tag.status-跳过 {
+  color: var(--text-faint);
+  text-decoration: line-through;
 }
 
 /* Floating Highlight Card */

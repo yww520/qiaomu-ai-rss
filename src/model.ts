@@ -17,6 +17,8 @@ export const entrySchema = z.object({
   link: optionalText, author: optionalText, published: optionalText, publishedTs: z.number().nullish(),
   summary: optionalText, summaryZh: optionalText, aiSummary: optionalText, content: optionalText, image: optionalText,
   rewrite: rewriteSchema.nullish(),
+  readStatus: optionalText,
+  category: optionalText,
 });
 export type Entry = z.infer<typeof entrySchema>;
 export const sourceSchema = z.object({ id: z.string(), name: z.string(), category: optionalText, enabled: z.boolean().optional() });
@@ -39,14 +41,17 @@ export type ChannelState = z.infer<typeof channelStateSchema>;
 export const highlightStyleSchema = z.enum(['highlight', 'underline', 'bold']);
 export type HighlightStyle = z.infer<typeof highlightStyleSchema>;
 
+export const highlightColorSchema = z.enum(['yellow', 'green', 'blue', 'purple', 'red', 'orange']);
+export type HighlightColor = z.infer<typeof highlightColorSchema>;
+
 export const highlightSchema = z.object({
   id: z.string(),
   entryId: z.string(),
   text: z.string(),
   style: highlightStyleSchema.default('highlight'),
+  color: highlightColorSchema.default('yellow'),
   note: z.string().default(''),
   createdAt: z.number().default(0),
-  color: z.string().optional(),
 });
 export type Highlight = z.infer<typeof highlightSchema>;
 
