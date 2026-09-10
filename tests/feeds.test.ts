@@ -138,4 +138,15 @@ describe('local subscription lifecycle', () => {
     const assertion = expect(service.add('https://example.com/feed', '', document)).rejects.toThrow('超时');
     await vi.advanceTimersByTimeAsync(20001); await assertion; vi.useRealTimers();
   });
+  it('calls wempUpdater for WeChat MP feeds before fetching on forced refresh', async () => {
+    const state = initialState(null);
+    const transport = vi.fn(async () => ({ status: 200, text: rss() }));
+    const wempUpdater = vi.fn(async () => ({ ok: true, message: 'updated' }));
+    const service = new Subscriptions(() => state, async () => {}, transport, wempUpdater);
+    await service.import([{ url: 'http://43.156.114.156:8001/feed/MP_WXS_123456.xml', name: 'Test MP', group: '' }]);
+    const feed = state.subscriptions[0];
+    await service.refresh([feed.id], document, true);
+    expect(wempUpdater).toHaveBeenCalledWith('MP_WXS_123456', 'Test MP');
+    expect(transport).toHaveBeenCalledWith(feed.url);
+  });
 });

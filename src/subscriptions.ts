@@ -4,7 +4,15 @@ import { deduplicateEntriesList, subscriptionSchema, type State, type Subscripti
 export type FeedTransport = (url: string) => Promise<{ status: number; text: string }>;
 export class Subscriptions {
   private pending = new Map<string, Promise<void>>();
-  constructor(private state: () => State, private persist: () => Promise<void>, private transport: FeedTransport = url => requestUrl({ url, method: 'GET', throw: false })) {}
+  private transport: FeedTransport;
+  constructor(
+    private state: () => State,
+    private persist: () => Promise<void>,
+    transport?: FeedTransport,
+    private wempUpdater?: (mpId: string, name?: string) => Promise<unknown>,
+  ) {
+    this.transport = transport ?? (url => requestUrl({ url, method: 'GET', throw: false }));
+  }
   private async fetch(url: string, doc: Document) {
     let timer: number | undefined;
     try {
@@ -55,8 +63,19 @@ export class Subscriptions {
   }
   async refresh(ids: string[], doc: Document, force = false, updated?: () => void): Promise<void> {
     const remaining = [...ids];
-    const worker = async () => { while (remaining.length) { const id = remaining.shift(); if (id) { await this.refreshOne(id, doc, force); updated?.(); } } };
-    await Promise.all(Array.from({ length: Math.min(3, remaining.length) }, worker));
+    const worker = async () => {
+      while (remaining.length) {
+        const id = remaining.shift();
+        if (id) {
+          await this.refreshOne(id, doc, force);
+          updated?.();
+          if (remaining.length > 0) {
+            await new Promise(r => setTimeout(r, 200));
+          }
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(2, remaining.length) }, worker));
   }
   private refreshOne(id: string, doc: Document, force: boolean): Promise<void> {
     const ongoing = this.pending.get(id); if (ongoing) return ongoing;
@@ -64,6 +83,13 @@ export class Subscriptions {
     if (!feed || (!force && Date.now() - feed.updatedAt < 300000)) return Promise.resolve();
     const refresh = async () => {
       try {
+        if (force && this.wempUpdater) {
+          const match = feed.url.match(/\/feed\/(?:MP_WXS_)?([0-9A-Za-z_-]+)\.xml/);
+          if (match) {
+            const mpId = match[1].startsWith('MP_WXS_') ? match[1] : `MP_WXS_${match[1]}`;
+            await this.wempUpdater(mpId, feed.name).catch(() => undefined);
+          }
+        }
         const parsed = await this.fetch(feed.url, doc);
         if (!this.state().subscriptions.includes(feed)) return;
         feed.entries = deduplicateEntriesList(parsed.entries, this.state().deletedIds); feed.updatedAt = Date.now(); feed.error = '';

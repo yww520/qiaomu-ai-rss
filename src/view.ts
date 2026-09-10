@@ -634,17 +634,6 @@ export class ReaderView extends ItemView {
       if (this.vaultScope()) { this.entries = this.plugin.vaultSources.entries(this.source.slice(7)); this.hasMore = false; return; }
       if (this.personalScope()) {
         const feeds = this.selectedFeeds();
-        if (force) {
-          const settings = this.plugin.state.settings;
-          const client = new WeMpClient(() => settings.weMpServerUrl, () => settings.weMpToken);
-          for (const feed of feeds) {
-            const match = feed.url.match(/\/feed\/(?:MP_WXS_)?([0-9A-Za-z_-]+)\.xml/);
-            if (match) {
-              const mpId = match[1].startsWith('MP_WXS_') ? match[1] : `MP_WXS_${match[1]}`;
-              void client.updateMpArticles(mpId, feed.name);
-            }
-          }
-        }
         await this.plugin.subscriptions.refresh(feeds.map(feed => feed.id), this.reader.ownerDocument, force, () => {
           if (!this.closed && version === this.listVersion) { this.entries = this.localEntries(); this.renderList(); }
         });

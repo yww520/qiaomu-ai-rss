@@ -22,6 +22,7 @@ export default class QiaomuRssPlugin extends Plugin {
   state: State = initialState(null);
   images!: LocalImages;
   subscriptions!: Subscriptions;
+  wempClient!: WeMpClient;
   private subscriptionManager?: SubscriptionManager;
   private lastNote: TFile | null = null;
   private saving: Promise<void> = Promise.resolve();
@@ -68,7 +69,13 @@ export default class QiaomuRssPlugin extends Plugin {
     catch { new Notice('RSS 配置不兼容，已使用默认设置。'); }
     this.images = new LocalImages(this.app.vault, `${this.app.vault.configDir}/plugins/${this.manifest.id}/image-cache`);
     registerImageDrops(this);
-    this.subscriptions = new Subscriptions(() => this.state, () => this.persist());
+    this.wempClient = new WeMpClient(() => this.state.settings.weMpServerUrl, () => this.state.settings.weMpToken);
+    this.subscriptions = new Subscriptions(
+      () => this.state,
+      () => this.persist(),
+      undefined,
+      (mpId, name) => this.wempClient.updateMpArticles(mpId, name),
+    );
     this.addCommand({ id: 'manage-subscriptions', name: '管理我的订阅', callback: () => this.manageSubscriptions() });
     this.registerView(VIEW_TYPE, leaf => new ReaderView(leaf, this));
     this.registerView(DISCOVERY_VIEW_TYPE, leaf => new DiscoveryView(leaf, this));
