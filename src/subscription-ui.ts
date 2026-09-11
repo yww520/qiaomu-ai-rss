@@ -390,29 +390,39 @@ export class WeChatQrAuthModal extends Modal {
     });
     imgContainer.createSpan({ text: '⏳ 正在连接服务…', attr: { style: 'color: var(--text-muted); font-size: 0.9em;' } });
 
-    // Check WeRead status
+    // Check WeRead status and validity
     const wereadStatus = await this.client.checkWereadStatus();
     if (this.isClosed) return;
 
     if (wereadStatus.configured) {
-      desc.setText('微信读书已处于授权登录状态，云端服务可正常稳定抓取公众号文章！');
-      imgContainer.empty();
-      const card = imgContainer.createDiv({
-        attr: { style: 'display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; background: var(--background-secondary); border-radius: 8px; width: 100%; max-width: 280px;' },
-      });
-      card.createDiv({ text: '✅', attr: { style: 'font-size: 40px; margin-bottom: 8px;' } });
-      card.createDiv({ text: '微信读书已成功授权', attr: { style: 'font-weight: 600; font-size: 1.1em;' } });
-      if (wereadStatus.vid) {
-        card.createDiv({ text: `已绑定账号 VID: ${wereadStatus.vid}`, attr: { style: 'font-size: 0.85em; color: var(--text-muted); margin-top: 4px;' } });
-      }
-      card.createDiv({ text: '无需重复扫码，可直接搜索订阅公众号并自动抓取全文', attr: { style: 'font-size: 0.85em; color: var(--text-muted); margin-top: 4px;' } });
+      const testRes = await this.client.testWereadAuth();
+      if (this.isClosed) return;
 
-      const btnRow = content.createDiv({ attr: { style: 'text-align: center; margin-top: 16px; display: flex; gap: 8px; justify-content: center;' } });
-      const doneBtn = btnRow.createEl('button', { text: '确定', cls: 'mod-cta' });
-      doneBtn.onclick = () => this.close();
-      const reLoginBtn = btnRow.createEl('button', { text: '重新扫码绑定' });
-      reLoginBtn.onclick = () => void this.loadQrFlow(content, desc, imgContainer);
-      return;
+      if (testRes.ok) {
+        desc.setText('微信读书已处于有效授权状态，云端服务可正常抓取公众号文章！');
+        imgContainer.empty();
+        const card = imgContainer.createDiv({
+          attr: { style: 'display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; background: var(--background-secondary); border-radius: 8px; width: 100%; max-width: 300px;' },
+        });
+        card.createDiv({ text: '✅', attr: { style: 'font-size: 40px; margin-bottom: 8px;' } });
+        card.createDiv({ text: '微信读书已有效授权', attr: { style: 'font-weight: 600; font-size: 1.1em;' } });
+        if (wereadStatus.vid) {
+          card.createDiv({ text: `已绑定账号 VID: ${wereadStatus.vid}`, attr: { style: 'font-size: 0.85em; color: var(--text-muted); margin-top: 4px;' } });
+        }
+        card.createDiv({ text: '无需重复扫码，可直接搜索订阅公众号并自动抓取全文', attr: { style: 'font-size: 0.85em; color: var(--text-muted); margin-top: 4px; text-align: center;' } });
+
+        const btnRow = content.createDiv({ attr: { style: 'text-align: center; margin-top: 16px; display: flex; gap: 8px; justify-content: center;' } });
+        const doneBtn = btnRow.createEl('button', { text: '确定', cls: 'mod-cta' });
+        doneBtn.onclick = () => this.close();
+        const reLoginBtn = btnRow.createEl('button', { text: '重新扫码绑定' });
+        reLoginBtn.onclick = () => void this.loadQrFlow(content, desc, imgContainer);
+
+        const tip = content.createEl('p', {
+          text: '💡 提示：此二维码为微信读书授权。如需更新微信公众平台后台登录态，请在主面板点击「打开服务后台」并在网页首页扫码。',
+          attr: { style: 'font-size: 0.82em; color: var(--text-muted); margin-top: 14px; text-align: center; max-width: 320px;' },
+        });
+        return;
+      }
     }
 
     await this.loadQrFlow(content, desc, imgContainer);

@@ -241,6 +241,20 @@ export class WeMpClient {
     }
   }
 
+  async testWereadAuth(): Promise<{ ok: boolean; message: string }> {
+    try {
+      const headers = await this.getHeaders();
+      const url = `${this.baseUrl}/api/v1/wx/weread/test`;
+      const res = await requestUrl({ url, method: 'POST', headers, throw: false });
+      if (res.status === 200 && res.json?.code === 0 && res.json?.data?.ok) {
+        return { ok: true, message: '微信读书授权有效' };
+      }
+      return { ok: false, message: res.json?.message || '微信读书 Cookie 已过期' };
+    } catch (e) {
+      return { ok: false, message: e instanceof Error ? e.message : String(e) };
+    }
+  }
+
   async listSubscribedMps(): Promise<WeMpAccount[]> {
     try {
       const headers = await this.getHeaders();
