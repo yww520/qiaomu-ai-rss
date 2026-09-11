@@ -535,8 +535,8 @@ class RssSettings extends PluginSettingTab {
             await this.plugin.persist();
           }));
         } },
-        { name: '微信扫码授权', desc: '直接在 Obsidian 弹窗中扫码登录微信，授权云端抓取服务。', render: setting => {
-          setting.addButton(button => button.setButtonText('弹出微信二维码扫码').setCta().onClick(() => {
+        { name: '微信抓取授权 (双通道)', desc: '在 Obsidian 弹窗中并列展示微信读书与公众平台双通道授权二维码。', render: setting => {
+          setting.addButton(button => button.setButtonText('打开微信授权中心').setCta().onClick(() => {
             const client = new WeMpClient(() => settings.weMpServerUrl, () => settings.weMpToken);
             new WeChatQrAuthModal(this.plugin, client, () => {}).open();
           }));

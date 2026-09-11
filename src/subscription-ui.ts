@@ -68,7 +68,7 @@ export class SubscriptionManager extends Modal {
 
     const statusRow = container.createDiv({ cls: 'qrs-subscription-tools' });
     const statusText = statusRow.createSpan({ text: `云端服务: ${settings.weMpServerUrl || '未配置'}` });
-    const qrBtn = statusRow.createEl('button', { text: '微信扫码授权', cls: 'mod-cta' });
+    const qrBtn = statusRow.createEl('button', { text: '微信扫码授权 (双通道)', cls: 'mod-cta' });
     const checkBtn = statusRow.createEl('button', { text: '测试连接' });
     const webBtn = statusRow.createEl('button', { text: '打开服务后台' });
     webBtn.onclick = () => {
@@ -362,35 +362,86 @@ class OpmlImport extends Modal {
 }
 
 export class WeChatQrAuthModal extends Modal {
-  private timer?: number;
+  private wereadTimer?: number;
+  private mpTimer?: number;
   private isClosed = false;
 
   constructor(private plugin: QiaomuRssPlugin, private client: WeMpClient, private onSuccess: () => void) {
     super(plugin.app);
   }
 
+  private clearTimers() {
+    if (this.wereadTimer) {
+      window.clearInterval(this.wereadTimer);
+      this.wereadTimer = undefined;
+    }
+    if (this.mpTimer) {
+      window.clearInterval(this.mpTimer);
+      this.mpTimer = undefined;
+    }
+  }
+
   async onOpen() {
     this.isClosed = false;
-    if (this.timer) {
-      window.clearInterval(this.timer);
-      this.timer = undefined;
-    }
+    this.clearTimers();
 
-    this.setTitle('微信读书扫码授权');
+    this.setTitle('微信抓取授权中心 (双通道)');
+    this.modalEl.style.width = '780px';
+    this.modalEl.style.maxWidth = '94vw';
+
     const content = this.contentEl;
     content.empty();
     content.addClass('qrs-subscription-modal');
 
-    const desc = content.createEl('p', {
-      text: '正在检查微信读书授权状态…',
-      attr: { style: 'text-align: center; color: var(--text-muted); margin-bottom: 12px;' },
+    content.createEl('p', {
+      text: '云端服务支持双通道互备：微信读书通道（日常免密抓取正文，任何微信号均可扫码）与微信公众平台通道（官方已发表接口，需管理员微信号扫码）。两者并列展示，可按需分别扫码授权。',
+      attr: { style: 'text-align: center; color: var(--text-muted); margin-bottom: 16px; font-size: 0.88em; line-height: 1.5;' },
     });
-    const imgContainer = content.createDiv({
-      attr: { style: 'display: flex; justify-content: center; align-items: center; min-height: 220px;' },
-    });
-    imgContainer.createSpan({ text: '⏳ 正在连接服务…', attr: { style: 'color: var(--text-muted); font-size: 0.9em;' } });
 
-    // Check WeRead status and validity
+    const grid = content.createDiv({
+      attr: {
+        style: 'display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-bottom: 16px;',
+      },
+    });
+
+    const leftCol = grid.createDiv({
+      attr: {
+        style: 'border: 1px solid var(--background-modifier-border); border-radius: 8px; padding: 16px; background: var(--background-secondary); display: flex; flex-direction: column; align-items: center;',
+      },
+    });
+
+    const rightCol = grid.createDiv({
+      attr: {
+        style: 'border: 1px solid var(--background-modifier-border); border-radius: 8px; padding: 16px; background: var(--background-secondary); display: flex; flex-direction: column; align-items: center;',
+      },
+    });
+
+    void this.initWereadColumn(leftCol);
+    void this.initMpColumn(rightCol);
+
+    const bottomBar = content.createDiv({
+      attr: {
+        style: 'display: flex; justify-content: space-between; align-items: center; margin-top: 12px; border-top: 1px solid var(--background-modifier-border); padding-top: 12px;',
+      },
+    });
+    const webBtn = bottomBar.createEl('button', { text: '打开云端完整后台' });
+    webBtn.onclick = () => window.open(this.client.baseUrl, '_blank');
+
+    const closeBtn = bottomBar.createEl('button', { text: '完成并关闭', cls: 'mod-cta' });
+    closeBtn.onclick = () => this.close();
+  }
+
+  private async initWereadColumn(col: HTMLElement) {
+    if (this.isClosed) return;
+    col.empty();
+
+    const header = col.createDiv({ attr: { style: 'text-align: center; margin-bottom: 12px; width: 100%;' } });
+    header.createEl('div', { text: '📚 微信读书通道 (日常抓取)', attr: { style: 'font-weight: 600; font-size: 1.05em;' } });
+    header.createEl('div', { text: '个人微信扫码 · 免密抓取已关注公众号最新全文', attr: { style: 'font-size: 0.8em; color: var(--text-muted); margin-top: 2px;' } });
+
+    const bodyEl = col.createDiv({ attr: { style: 'display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 250px; width: 100%;' } });
+    bodyEl.createSpan({ text: '⏳ 正在检测状态…', attr: { style: 'color: var(--text-muted); font-size: 0.88em;' } });
+
     const wereadStatus = await this.client.checkWereadStatus();
     if (this.isClosed) return;
 
@@ -399,103 +450,157 @@ export class WeChatQrAuthModal extends Modal {
       if (this.isClosed) return;
 
       if (testRes.ok) {
-        desc.setText('微信读书已处于有效授权状态，云端服务可正常抓取公众号文章！');
-        imgContainer.empty();
-        const card = imgContainer.createDiv({
-          attr: { style: 'display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; background: var(--background-secondary); border-radius: 8px; width: 100%; max-width: 300px;' },
-        });
-        card.createDiv({ text: '✅', attr: { style: 'font-size: 40px; margin-bottom: 8px;' } });
-        card.createDiv({ text: '微信读书已有效授权', attr: { style: 'font-weight: 600; font-size: 1.1em;' } });
+        bodyEl.empty();
+        bodyEl.createDiv({ text: '✅', attr: { style: 'font-size: 38px; margin-bottom: 6px;' } });
+        bodyEl.createDiv({ text: '微信读书授权有效', attr: { style: 'font-weight: 600; font-size: 1.02em; color: var(--text-success, #2e7d32);' } });
         if (wereadStatus.vid) {
-          card.createDiv({ text: `已绑定账号 VID: ${wereadStatus.vid}`, attr: { style: 'font-size: 0.85em; color: var(--text-muted); margin-top: 4px;' } });
+          bodyEl.createDiv({ text: `绑定 VID: ${wereadStatus.vid}`, attr: { style: 'font-size: 0.82em; color: var(--text-muted); margin-top: 4px;' } });
         }
-        card.createDiv({ text: '无需重复扫码，可直接搜索订阅公众号并自动抓取全文', attr: { style: 'font-size: 0.85em; color: var(--text-muted); margin-top: 4px; text-align: center;' } });
+        bodyEl.createDiv({ text: '最新公众号文章正文抓取正常可用', attr: { style: 'font-size: 0.82em; color: var(--text-muted); margin-top: 4px;' } });
 
-        const btnRow = content.createDiv({ attr: { style: 'text-align: center; margin-top: 16px; display: flex; gap: 8px; justify-content: center;' } });
-        const doneBtn = btnRow.createEl('button', { text: '确定', cls: 'mod-cta' });
-        doneBtn.onclick = () => this.close();
-        const reLoginBtn = btnRow.createEl('button', { text: '重新扫码绑定' });
-        reLoginBtn.onclick = () => void this.loadQrFlow(content, desc, imgContainer);
-
-        const tip = content.createEl('p', {
-          text: '💡 提示：此二维码为微信读书授权。如需更新微信公众平台后台登录态，请在主面板点击「打开服务后台」并在网页首页扫码。',
-          attr: { style: 'font-size: 0.82em; color: var(--text-muted); margin-top: 14px; text-align: center; max-width: 320px;' },
-        });
+        const reBtn = bodyEl.createEl('button', { text: '重新扫码绑定', attr: { style: 'margin-top: 16px;' } });
+        reBtn.onclick = () => void this.loadWereadQrFlow(col, bodyEl);
         return;
       }
     }
 
-    await this.loadQrFlow(content, desc, imgContainer);
+    await this.loadWereadQrFlow(col, bodyEl);
   }
 
-  private async loadQrFlow(content: HTMLElement, desc: HTMLElement, imgContainer: HTMLElement) {
+  private async loadWereadQrFlow(col: HTMLElement, bodyEl: HTMLElement) {
     if (this.isClosed) return;
-    desc.setText('正在生成微信读书登录二维码…');
-    imgContainer.empty();
-    imgContainer.createSpan({ text: '⏳ 正在准备二维码…', attr: { style: 'color: var(--text-muted); font-size: 0.9em;' } });
+    bodyEl.empty();
+    bodyEl.createSpan({ text: '⏳ 正在生成微信读书二维码…', attr: { style: 'color: var(--text-muted); font-size: 0.88em;' } });
 
     const qrRes = await this.client.getWereadQrCode();
-
     if (this.isClosed) return;
 
     if (!qrRes.ok || !qrRes.qrImageUrl) {
-      imgContainer.empty();
-      desc.setText(`获取二维码失败: ${qrRes.message}`);
-      const btnRow = content.createDiv({ attr: { style: 'text-align: center; margin-top: 14px; display: flex; gap: 8px; justify-content: center;' } });
-      const retryBtn = btnRow.createEl('button', { text: '重试', cls: 'mod-cta' });
-      retryBtn.onclick = () => void this.onOpen();
-      const webBtn = btnRow.createEl('button', { text: '在浏览器后台扫码' });
-      webBtn.onclick = () => window.open(this.client.baseUrl, '_blank');
+      bodyEl.empty();
+      bodyEl.createEl('div', { text: `生成失败: ${qrRes.message}`, attr: { style: 'color: var(--text-error); font-size: 0.85em; text-align: center;' } });
+      const retryBtn = bodyEl.createEl('button', { text: '重试', attr: { style: 'margin-top: 10px;' } });
+      retryBtn.onclick = () => void this.loadWereadQrFlow(col, bodyEl);
       return;
     }
 
-    imgContainer.empty();
-    desc.setText('请使用手机微信扫一扫下方二维码，确认登录微信读书：');
-    imgContainer.createEl('img', {
+    bodyEl.empty();
+    bodyEl.createEl('img', {
       attr: {
         src: qrRes.qrImageUrl,
-        alt: '微信读书扫码授权',
-        style: 'width: 220px; height: 220px; border-radius: 8px; border: 1px solid var(--background-modifier-border); background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.08); object-fit: contain;',
+        alt: '微信读书二维码',
+        style: 'width: 180px; height: 180px; border-radius: 6px; border: 1px solid var(--background-modifier-border); background: #fff; object-fit: contain;',
       },
     });
+    bodyEl.createEl('div', { text: '请使用个人微信扫一扫确认', attr: { style: 'font-size: 0.82em; color: var(--text-muted); margin-top: 8px;' } });
 
-    content.createEl('p', {
-      text: '手机确认后，此窗口将自动检测并完成授权',
-      attr: { style: 'text-align: center; font-size: 0.85em; color: var(--text-muted); margin-top: 10px;' },
-    });
+    const refreshBtn = bodyEl.createEl('button', { text: '刷新二维码', attr: { style: 'margin-top: 10px; font-size: 0.85em;' } });
+    refreshBtn.onclick = () => void this.loadWereadQrFlow(col, bodyEl);
 
-    const btnRow = content.createDiv({ attr: { style: 'text-align: center; margin-top: 12px; display: flex; gap: 8px; justify-content: center;' } });
-    const refreshBtn = btnRow.createEl('button', { text: '刷新二维码' });
-    refreshBtn.onclick = () => void this.loadQrFlow(content, desc, imgContainer);
-
-    const webBtn = btnRow.createEl('button', { text: '在浏览器后台扫码' });
-    webBtn.onclick = () => window.open(this.client.baseUrl, '_blank');
-
-    // Safe status polling
-    if (this.timer) {
-      window.clearInterval(this.timer);
-      this.timer = undefined;
+    if (this.wereadTimer) {
+      window.clearInterval(this.wereadTimer);
+      this.wereadTimer = undefined;
     }
-    this.timer = window.setInterval(() => {
+    this.wereadTimer = window.setInterval(() => {
       if (this.isClosed) {
-        if (this.timer) {
-          window.clearInterval(this.timer);
-          this.timer = undefined;
-        }
+        if (this.wereadTimer) window.clearInterval(this.wereadTimer);
         return;
       }
       void (async () => {
         if (this.isClosed) return;
         const status = await this.client.checkWereadQrStatus();
         if (status.loginStatus && !this.isClosed) {
-          this.isClosed = true;
-          if (this.timer) {
-            window.clearInterval(this.timer);
-            this.timer = undefined;
+          if (this.wereadTimer) {
+            window.clearInterval(this.wereadTimer);
+            this.wereadTimer = undefined;
           }
           await this.client.completeWereadQrLogin();
-          new Notice('🎉 微信读书扫码授权成功！已开启稳定公众号采集');
-          this.close();
+          new Notice('🎉 微信读书扫码授权成功！');
+          this.initWereadColumn(col);
+          this.onSuccess();
+        }
+      })();
+    }, 2000);
+  }
+
+  private async initMpColumn(col: HTMLElement) {
+    if (this.isClosed) return;
+    col.empty();
+
+    const header = col.createDiv({ attr: { style: 'text-align: center; margin-bottom: 12px; width: 100%;' } });
+    header.createEl('div', { text: '📢 微信公众平台通道 (官方后台)', attr: { style: 'font-weight: 600; font-size: 1.05em;' } });
+    header.createEl('div', { text: '管理员微信扫码 · 官方已发表文章接口', attr: { style: 'font-size: 0.8em; color: var(--text-muted); margin-top: 2px;' } });
+
+    const bodyEl = col.createDiv({ attr: { style: 'display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 250px; width: 100%;' } });
+    bodyEl.createSpan({ text: '⏳ 正在检测状态…', attr: { style: 'color: var(--text-muted); font-size: 0.88em;' } });
+
+    const mpStatus = await this.client.checkQrStatus();
+    if (this.isClosed) return;
+
+    if (mpStatus.loginStatus) {
+      bodyEl.empty();
+      bodyEl.createDiv({ text: '✅', attr: { style: 'font-size: 38px; margin-bottom: 6px;' } });
+      bodyEl.createDiv({ text: '公众平台后台已登录', attr: { style: 'font-weight: 600; font-size: 1.02em; color: var(--text-success, #2e7d32);' } });
+      bodyEl.createDiv({ text: '官方群发列表拉取接口处于连接状态', attr: { style: 'font-size: 0.82em; color: var(--text-muted); margin-top: 4px;' } });
+
+      const reBtn = bodyEl.createEl('button', { text: '重新扫码登录', attr: { style: 'margin-top: 16px;' } });
+      reBtn.onclick = () => void this.loadMpQrFlow(col, bodyEl);
+      return;
+    }
+
+    await this.loadMpQrFlow(col, bodyEl);
+  }
+
+  private async loadMpQrFlow(col: HTMLElement, bodyEl: HTMLElement) {
+    if (this.isClosed) return;
+    bodyEl.empty();
+    const progressEl = bodyEl.createSpan({ text: '⏳ 正在请求公众平台登录二维码…', attr: { style: 'color: var(--text-muted); font-size: 0.88em; text-align: center;' } });
+
+    const qrRes = await this.client.getQrCode(msg => {
+      if (!this.isClosed) progressEl.setText(msg);
+    });
+    if (this.isClosed) return;
+
+    if (!qrRes.ok || !qrRes.qrImageUrl) {
+      bodyEl.empty();
+      bodyEl.createEl('div', { text: `生成失败: ${qrRes.message}`, attr: { style: 'color: var(--text-error); font-size: 0.85em; text-align: center;' } });
+      const retryBtn = bodyEl.createEl('button', { text: '重试', attr: { style: 'margin-top: 10px;' } });
+      retryBtn.onclick = () => void this.loadMpQrFlow(col, bodyEl);
+      return;
+    }
+
+    bodyEl.empty();
+    bodyEl.createEl('img', {
+      attr: {
+        src: qrRes.qrImageUrl,
+        alt: '公众平台登录二维码',
+        style: 'width: 180px; height: 180px; border-radius: 6px; border: 1px solid var(--background-modifier-border); background: #fff; object-fit: contain;',
+      },
+    });
+    bodyEl.createEl('div', { text: '请使用公众号管理员/运营者微信扫码', attr: { style: 'font-size: 0.82em; color: var(--text-muted); margin-top: 8px;' } });
+
+    const refreshBtn = bodyEl.createEl('button', { text: '刷新二维码', attr: { style: 'margin-top: 10px; font-size: 0.85em;' } });
+    refreshBtn.onclick = () => void this.loadMpQrFlow(col, bodyEl);
+
+    if (this.mpTimer) {
+      window.clearInterval(this.mpTimer);
+      this.mpTimer = undefined;
+    }
+    this.mpTimer = window.setInterval(() => {
+      if (this.isClosed) {
+        if (this.mpTimer) window.clearInterval(this.mpTimer);
+        return;
+      }
+      void (async () => {
+        if (this.isClosed) return;
+        const status = await this.client.checkQrStatus();
+        if (status.loginStatus && !this.isClosed) {
+          if (this.mpTimer) {
+            window.clearInterval(this.mpTimer);
+            this.mpTimer = undefined;
+          }
+          await this.client.completeQrLogin();
+          new Notice('🎉 微信公众号平台扫码授权成功！');
+          this.initMpColumn(col);
           this.onSuccess();
         }
       })();
@@ -504,10 +609,7 @@ export class WeChatQrAuthModal extends Modal {
 
   onClose() {
     this.isClosed = true;
-    if (this.timer) {
-      window.clearInterval(this.timer);
-      this.timer = undefined;
-    }
+    this.clearTimers();
     this.contentEl.empty();
   }
 }

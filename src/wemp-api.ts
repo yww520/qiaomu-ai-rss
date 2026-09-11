@@ -222,6 +222,17 @@ export class WeMpClient {
     }
   }
 
+  async completeQrLogin(): Promise<boolean> {
+    try {
+      const headers = await this.getHeaders();
+      const url = `${this.baseUrl}/api/v1/wx/auth/qr/over`;
+      const res = await requestUrl({ url, method: 'GET', headers, throw: false });
+      return res.status === 200;
+    } catch {
+      return false;
+    }
+  }
+
   async checkWereadStatus(): Promise<{ configured: boolean; vid?: string; cookieMasked?: string }> {
     try {
       const headers = await this.getHeaders();
