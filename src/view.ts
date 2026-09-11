@@ -14,6 +14,7 @@ import { generateArticleSummary, askArticleFollowUp } from './ai-summary';
 import { getTimelineGroup, type TimelineGroup } from './timeline';
 import { fetchWeChatArticleDirect } from './wechat-fetcher';
 import { READING_HUB_PREFIX, READING_HUB_VIEWS } from './reading-hub-source';
+import { TocNavigator } from './toc-navigator';
 export const VIEW_TYPE = 'qiaomu-ai-rss-reader';
 type Filter = 'all' | 'unread' | 'favorites';
 function feedHost(url: string) { try { return new URL(url).hostname; } catch { return 'RSS'; } }
@@ -43,6 +44,7 @@ function extractBundleText(bundle: Bundle, mode: Mode): string {
 }
 
 export class ReaderView extends ItemView {
+  private tocNavigator?: TocNavigator;
   private channelPicker?: ChannelPicker;
   private restoreObserver?: ResizeObserver;
   private pendingScroll?: { listTop: number; readerTop: number };
@@ -410,6 +412,8 @@ export class ReaderView extends ItemView {
     this.saveChannel(); this.channelPicker?.close(false); this.stopRestoring();
     if (this.checkpointTimer) window.clearTimeout(this.checkpointTimer);
     this.selectionCapture?.dispose();
+    this.tocNavigator?.destroy();
+    this.tocNavigator = undefined;
     this.closed = true; this.listVersion++; this.articleVersion++; this.clearImages(); this.clearThumbnails(); this.contentEl.onkeydown = null;
     return this.plugin.persist().catch(() => undefined);
   }
@@ -1128,6 +1132,8 @@ export class ReaderView extends ItemView {
   }
   private renderReader(keepContent = false) {
     this.selectionCapture?.clear();
+    this.tocNavigator?.destroy();
+    this.tocNavigator = undefined;
     const active = this.contentEl.ownerDocument.activeElement;
     const restoreFocus = active !== this.reader && this.reader.contains(active);
     const scroll = this.reader.scrollTop;
@@ -1291,8 +1297,14 @@ export class ReaderView extends ItemView {
       menu.addItem(item => item.setTitle('选择频道').setIcon('rss').onClick(() => this.pickChannel()));
       const rect = more.getBoundingClientRect(); menu.showAtPosition({ x: rect.left, y: rect.bottom });
     });
-    if (this.appearanceOpen) this.renderAppearanceSettings(toolbar);
-    if (previous) { this.reader.append(previous); this.reader.scrollTop = scroll; this.restoreOffsets(); return; }
+    if (previous) {
+      this.reader.append(previous);
+      this.reader.scrollTop = scroll;
+      this.restoreOffsets();
+      this.tocNavigator = new TocNavigator(this.reader, previous as HTMLElement);
+      this.tocNavigator.mount();
+      return;
+    }
     const article = this.reader.createEl('article', { cls: 'qrs-article' });
     article.createEl('h1', { text: titleOf(bundle.entry) });
     if (this.message) article.createDiv({ cls: 'qrs-feedback', text: this.message, attr: { role: 'status' } });
@@ -1305,6 +1317,9 @@ export class ReaderView extends ItemView {
           .then(async () => {
             await prepareMarkdownImageDrags(this.app, this.plugin.images, prose, bundle.entry.markdownPath || '');
             this.setupHighlightsInProse(prose);
+            this.tocNavigator?.destroy();
+            this.tocNavigator = new TocNavigator(this.reader, article);
+            this.tocNavigator.mount();
           })
           .catch(() => { prose.setText('Markdown 无法显示，请打开源文件。'); });
       } else {
@@ -1329,6 +1344,8 @@ export class ReaderView extends ItemView {
             }
           }
           this.setupHighlightsInProse(prose);
+          this.tocNavigator = new TocNavigator(this.reader, article);
+          this.tocNavigator.mount();
         } else {
           article.createDiv({ cls: 'qrs-empty', text: this.articleLoading ? '正在获取正文…' : `${modeLabels[this.mode]}暂无正文。可以切换版本，或从“更多”中打开原文。` });
         }

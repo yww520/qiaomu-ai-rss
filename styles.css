@@ -1192,4 +1192,149 @@
   transform: none;
 }
 
+/* ==========================================================================
+   Floating TOC Outline Navigator (浮动目录导航条)
+   ========================================================================== */
+
+.qrs-prose :is(h1, h2, h3, h4, h5, h6),
+.qrs-prose [id^="qrs-sec-heading-"] {
+  scroll-margin-top: 64px;
+}
+
+.qrs-toc-nav {
+  position: sticky;
+  top: 72px;
+  float: right;
+  margin-right: 12px;
+  width: 36px;
+  height: 0;
+  overflow: visible;
+  z-index: 10;
+  user-select: none;
+  pointer-events: none;
+}
+
+.qrs-toc-track {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 7px;
+  padding: 8px 4px;
+  pointer-events: auto;
+  max-height: calc(100vh - 150px);
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.qrs-toc-track::-webkit-scrollbar {
+  display: none;
+}
+
+.qrs-toc-item {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 3px 0;
+  margin: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  position: relative;
+  outline: none;
+}
+
+.qrs-toc-item:focus-visible {
+  outline: none;
+}
+
+.qrs-toc-tick {
+  display: block;
+  height: 2.5px;
+  border-radius: 2px;
+  background-color: var(--text-muted);
+  opacity: 0.35;
+  transition: width 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+              background-color 0.2s ease,
+              opacity 0.2s ease,
+              transform 0.2s ease,
+              box-shadow 0.2s ease;
+}
+
+.qrs-toc-tick-h1 { width: 22px; }
+.qrs-toc-tick-h2 { width: 19px; }
+.qrs-toc-tick-h3 { width: 15px; }
+.qrs-toc-tick-h4,
+.qrs-toc-tick-h5,
+.qrs-toc-tick-h6 { width: 10px; }
+
+.qrs-toc-item:hover .qrs-toc-tick {
+  opacity: 0.85;
+  background-color: var(--text-normal);
+  transform: scaleX(1.1);
+  transform-origin: right center;
+}
+
+/* Active state: exactly matches reference screenshot */
+.qrs-toc-item.is-active .qrs-toc-tick {
+  opacity: 1;
+  background-color: #ffffff;
+  height: 3px;
+  transform: scaleX(1.15);
+  transform-origin: right center;
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.65), 0 0 2px rgba(255, 255, 255, 0.9);
+}
+
+.theme-light .qrs-toc-item.is-active .qrs-toc-tick {
+  background-color: var(--interactive-accent, #0969da);
+  box-shadow: 0 0 6px rgba(9, 105, 218, 0.4);
+}
+
+.theme-light .qrs-toc-tick {
+  opacity: 0.28;
+}
+
+.qrs-toc-tooltip {
+  position: absolute;
+  right: 100%;
+  top: 50%;
+  transform: translateY(-50%) translateX(6px);
+  margin-right: 10px;
+  opacity: 0;
+  pointer-events: none;
+  background: var(--background-secondary-alt, rgba(30, 30, 30, 0.94));
+  color: var(--text-normal);
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1.4;
+  padding: 5px 11px;
+  border-radius: 6px;
+  white-space: nowrap;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: var(--shadow-s, 0 4px 14px rgba(0, 0, 0, 0.3));
+  border: 1px solid var(--background-modifier-border);
+  z-index: 25;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.qrs-toc-item:hover .qrs-toc-tooltip {
+  opacity: 1;
+  transform: translateY(-50%) translateX(0);
+}
+
+@container (max-width: 720px) {
+  .qrs-toc-nav {
+    display: none;
+  }
+}
+
+@media (max-width: 680px) {
+  .qrs-toc-nav {
+    display: none;
+  }
+}
+
+
 
