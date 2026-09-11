@@ -101,9 +101,14 @@ export async function parseFeed(xml: string, url: string, doc: Document): Promis
     const publishedTs = Date.parse(published);
     const contentBase = contentNode && hasXmlBase(contentNode) ? baseUrl(contentNode, url) : link || base;
     const parsedContent = contentWithBase(raw.slice(0, MAX_ARTICLE_RAW), contentBase, doc);
+    const descText = text(item, 'description') || '';
+    const descAuthorMatch = descText.match(/^[【\[](.*?)[】\]]/);
+    const parsedAuthor = descAuthorMatch ? descAuthorMatch[1].trim() : '';
+    const rawAuthor = atom ? text(child(item, 'author') || root, 'name') : text(item, 'creator') || text(item, 'author');
+    const author = (rawAuthor && rawAuthor !== '精选文章' ? rawAuthor : '') || parsedAuthor || rawAuthor || '';
     const entry: Entry = { id, sourceId, origin: 'local', sourceName: name, title, link: link || url, image: entryImage(item, parsedContent.image, contentBase),
       published, publishedTs: Number.isNaN(publishedTs) ? null : publishedTs,
-      author: atom ? text(child(item, 'author') || root, 'name') : text(item, 'creator') || text(item, 'author'),
+      author,
       summary: plain(raw, doc).slice(0, 240), content: (parsedContent.html || '<p>订阅源没有提供正文，请打开原文阅读。</p>') + (raw.length > MAX_ARTICLE_RAW ? '<p>正文较长，已缓存部分内容。请打开原文阅读全文。</p>' : '') };
     size += new TextEncoder().encode(JSON.stringify(entry)).byteLength;
     if (size > MAX_STORED_FEED) break;

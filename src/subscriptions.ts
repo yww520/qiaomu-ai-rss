@@ -92,7 +92,7 @@ export class Subscriptions {
         }
         const parsed = await this.fetch(feed.url, doc);
         if (!this.state().subscriptions.includes(feed)) return;
-        feed.entries = deduplicateEntriesList(parsed.entries, this.state().deletedIds); feed.updatedAt = Date.now(); feed.error = '';
+        feed.entries = deduplicateEntriesList([...parsed.entries, ...(feed.entries || [])], this.state().deletedIds).slice(0, 100); feed.updatedAt = Date.now(); feed.error = '';
         for (const entry of feed.entries) {
           if (this.state().cache[entry.id]) {
             this.state().cache[entry.id].entry = entry;

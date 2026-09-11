@@ -3,7 +3,7 @@ import { DiscoveryPanel } from './discovery-view';
 import { VaultFilePicker, VaultFolderPicker, vaultSourceId } from './vault-source';
 import type QiaomuRssPlugin from './main';
 import { exportOpml, MAX_SUBSCRIPTIONS, parseOpml, type FeedInput } from './feeds';
-import type { Subscription } from './model';
+import { canonicalEntryKey, type Subscription } from './model';
 
 import { WeMpClient } from './wemp-api';
 
@@ -663,6 +663,35 @@ export class ImportWechatArticleModal extends Modal {
             const newFeed = await this.plugin.subscriptions.add(res.feedUrl, '微信公众号', this.contentEl.ownerDocument);
             targetFeedId = newFeed.id;
           }
+
+          const featuredSub = this.plugin.state.subscriptions.find(s => s.id === targetFeedId);
+          const addedEntry = featuredSub?.entries.find(e => e.link?.includes(url.trim()) || url.trim().includes(e.link || ''));
+          let matchedSubName = '';
+
+          if (addedEntry) {
+            const targetAuthor = addedEntry.author?.trim();
+            if (targetAuthor && targetAuthor !== '精选文章') {
+              const matchedSub = this.plugin.state.subscriptions.find(s => s.id !== targetFeedId && (s.name === targetAuthor || s.name.includes(targetAuthor) || targetAuthor.includes(s.name)));
+              if (matchedSub) {
+                matchedSubName = matchedSub.name;
+                const alreadyHas = matchedSub.entries.some(e => e.link === addedEntry.link || canonicalEntryKey(e) === canonicalEntryKey(addedEntry));
+                if (!alreadyHas) {
+                  matchedSub.entries.unshift({
+                    ...addedEntry,
+                    id: `local-${matchedSub.id}-${addedEntry.id}`,
+                    sourceId: matchedSub.id,
+                    sourceName: matchedSub.name,
+                    author: matchedSub.name,
+                  });
+                  matchedSub.entries.sort((a, b) => (b.publishedTs || 0) - (a.publishedTs || 0));
+                }
+                const subChannelKey = JSON.stringify([this.plugin.state.settings.baseUrl, matchedSub.id]);
+                delete this.plugin.state.channelStates[subChannelKey];
+                targetFeedId = matchedSub.id;
+              }
+            }
+          }
+
           if (targetFeedId) {
             const channelKey = JSON.stringify([this.plugin.state.settings.baseUrl, targetFeedId]);
             delete this.plugin.state.channelStates[channelKey];
@@ -675,7 +704,8 @@ export class ImportWechatArticleModal extends Modal {
             await this.plugin.persist();
             this.plugin.resetViews();
           }
-          new Notice(res.title ? `🎉「${res.title}」已加入「精选文章」源！` : '文章已成功抓取并更新至「精选文章」！', 6000);
+          const locationTip = matchedSubName ? `已自动归类至「${matchedSubName}」及「精选文章」` : '已归入「精选文章」';
+          new Notice(res.title ? `🎉「${res.title}」抓取成功！${locationTip}` : `文章已成功抓取！${locationTip}`, 7000);
           this.close();
           this.onSuccess();
         } else {
