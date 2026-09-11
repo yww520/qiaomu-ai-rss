@@ -58,10 +58,10 @@ describe('TocNavigator', () => {
     expect(items?.[1].querySelector('.qrs-toc-tick')?.className).toContain('qrs-toc-tick-h3');
     expect(items?.[3].querySelector('.qrs-toc-tick')?.className).toContain('qrs-toc-tick-h2');
 
-    // Check tooltip text
-    expect(items?.[0].querySelector('.qrs-toc-tooltip')?.textContent).toBe('一、引言与背景');
-    expect(items?.[1].querySelector('.qrs-toc-tooltip')?.textContent).toBe('1.1 架构设计');
-    expect(items?.[3].querySelector('.qrs-toc-tooltip')?.textContent).toBe('二、实践总结');
+    // Check tooltip aria-label text
+    expect(items?.[0].getAttribute('aria-label')).toBe('一、引言与背景');
+    expect(items?.[1].getAttribute('aria-label')).toBe('1.1 架构设计');
+    expect(items?.[3].getAttribute('aria-label')).toBe('二、实践总结');
 
     // First item should be active initially
     expect(items?.[0].classList.contains('is-active')).toBe(true);
@@ -86,8 +86,8 @@ describe('TocNavigator', () => {
 
     const items = readerEl.querySelectorAll('.qrs-toc-item');
     expect(items).toHaveLength(3);
-    expect(items[0].querySelector('.qrs-toc-tooltip')?.textContent).toBe('1. 宏观周期与资本开支');
-    expect(items[1].querySelector('.qrs-toc-tooltip')?.textContent).toBe('2. 算力与电力瓶颈');
+    expect(items[0].getAttribute('aria-label')).toBe('1. 宏观周期与资本开支');
+    expect(items[1].getAttribute('aria-label')).toBe('2. 算力与电力瓶颈');
 
     nav.destroy();
   });

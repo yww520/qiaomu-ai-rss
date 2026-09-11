@@ -1,3 +1,5 @@
+import { setTooltip } from 'obsidian';
+
 export interface TocHeadingItem {
   id: string;
   element: HTMLElement;
@@ -145,16 +147,11 @@ export class TocNavigator {
       btn.type = 'button';
       btn.setAttribute('data-level', String(item.level));
       btn.setAttribute('data-index', String(index));
-      btn.setAttribute('aria-label', item.text);
+      setTooltip(btn, item.text, { placement: 'left' });
 
       const tick = doc.createElement('span');
       tick.className = `qrs-toc-tick qrs-toc-tick-h${item.level}`;
       btn.appendChild(tick);
-
-      const tooltip = doc.createElement('span');
-      tooltip.className = 'qrs-toc-tooltip';
-      tooltip.textContent = item.text;
-      btn.appendChild(tooltip);
 
       btn.onclick = (e) => {
         e.preventDefault();
