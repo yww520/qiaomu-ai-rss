@@ -552,11 +552,18 @@ export class ImportWechatArticleModal extends Modal {
             targetFeedId = newFeed.id;
           }
           if (targetFeedId) {
+            const channelKey = JSON.stringify([this.plugin.state.settings.baseUrl, targetFeedId]);
+            delete this.plugin.state.channelStates[channelKey];
+            const groupKey = JSON.stringify([this.plugin.state.settings.baseUrl, '@group:微信公众号']);
+            delete this.plugin.state.channelStates[groupKey];
+            const localKey = JSON.stringify([this.plugin.state.settings.baseUrl, '@local']);
+            delete this.plugin.state.channelStates[localKey];
+
             this.plugin.state.settings.lastSource = targetFeedId;
             await this.plugin.persist();
             this.plugin.resetViews();
           }
-          new Notice(res.title ? `🎉「${res.title}」已加入阅读器！` : '文章已成功抓取并更新！');
+          new Notice(res.title ? `🎉「${res.title}」已加入「精选文章」源！` : '文章已成功抓取并更新至「精选文章」！', 6000);
           this.close();
           this.onSuccess();
         } else {

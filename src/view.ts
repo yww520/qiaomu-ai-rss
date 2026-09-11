@@ -169,7 +169,7 @@ export class ReaderView extends ItemView {
     this.restoreObserver.observe(this.list); this.restoreObserver.observe(this.reader);
   }
   private restoreChannel(saved: ChannelState) {
-    this.entries = this.deduplicateEntries(saved.entries); this.bundle = saved.bundle; this.mode = saved.mode;
+    this.entries = this.readingHubScope() ? (this.plugin.readingHub?.entries(this.source) || []) : this.personalScope() ? this.localEntries() : this.deduplicateEntries(saved.entries); this.bundle = saved.bundle; this.mode = saved.mode;
     this.filter = saved.filter; this.query = saved.query; this.unreadSession = new Set(saved.unread);
     this.cursor = saved.cursor; this.hasMore = saved.hasMore; this.lastListTop = saved.listTop; this.lastReaderTop = saved.readerTop;
     this.pendingScroll = { listTop: saved.listTop, readerTop: saved.readerTop };
