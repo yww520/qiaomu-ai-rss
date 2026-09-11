@@ -60,49 +60,70 @@ export class TocNavigator {
       this.articleEl.querySelectorAll<HTMLElement>('.qrs-prose h1, .qrs-prose h2, .qrs-prose h3, .qrs-prose h4, .qrs-prose h5, .qrs-prose h6')
     );
 
-    if (headingEls.length >= 2) {
-      this.headings = headingEls
-        .map((el, index) => {
-          const text = (el.textContent || '').trim();
-          const tagMatch = el.tagName.match(/^H([1-6])$/i);
-          const level = tagMatch ? parseInt(tagMatch[1], 10) : 2;
-          if (!el.id) {
-            el.id = `qrs-heading-${index}`;
-          }
-          return { id: el.id, element: el, text, level };
-        })
-        .filter(item => item.text.length > 0 && item.text.length < 120);
+    const validStandard = headingEls
+      .map((el, index) => {
+        const text = (el.textContent || '').replace(/\s+/g, ' ').trim();
+        const tagMatch = el.tagName.match(/^H([1-6])$/i);
+        const level = tagMatch ? parseInt(tagMatch[1], 10) : 2;
+        if (!el.id) {
+          el.id = `qrs-heading-${index}`;
+        }
+        return { id: el.id, element: el, text, level };
+      })
+      .filter(item => item.text.length >= 2 && item.text.length <= 90);
+
+    if (validStandard.length >= 2) {
+      this.headings = validStandard;
       return;
     }
 
-    // 2. Fallback: Search for WeChat styled strong section headings if no h1-h6
-    const strongEls = Array.from(
-      this.articleEl.querySelectorAll<HTMLElement>('.qrs-prose p > strong:only-child, .qrs-prose section > strong:only-child, .qrs-prose p > span > strong:only-child')
+    // 2. Comprehensive fallback for WeChat articles without <h1-h6> tags
+    const blocks = Array.from(
+      this.articleEl.querySelectorAll<HTMLElement>('.qrs-prose p, .qrs-prose section')
     );
 
-    const sectionRegex = /^(?:[0-9一二三四五六七八九十百]+[、. ]|第[0-9一二三四五六七八九十]+[章节部分篇]|Part\s+[0-9IVX]+|[A-Z0-9]+[\.、])/i;
+    const noiseWords = ['微信扫一扫', '赞赏', '喜欢作者', '转载开白', '阅读原文', '点个在看', '点击关注', '商务合作', '免责声明', '作者简介', '延伸阅读'];
+    const sectionRegex = /^(?:[0-9一二三四五六七八九十百]+[、. ]|第[0-9一二三四五六七八九十]+[章节部分篇]|Part\s+[0-9IVX]+|[A-Z0-9]+[、.])/i;
 
-    const matchedStrongs = strongEls
-      .filter(el => {
-        const text = (el.textContent || '').trim();
-        return text.length >= 3 && text.length <= 80 && (sectionRegex.test(text) || el.parentElement?.tagName === 'P');
-      })
-      .slice(0, 40);
+    const candidates: TocHeadingItem[] = [];
 
-    if (matchedStrongs.length >= 2) {
-      this.headings = matchedStrongs.map((el, index) => {
-        const text = (el.textContent || '').trim();
-        const host = el.parentElement || el;
-        if (!host.id) {
-          host.id = `qrs-sec-heading-${index}`;
+    for (let i = 0; i < blocks.length; i++) {
+      const el = blocks[i];
+      if (el.closest('blockquote') || el.closest('.qrs-missing-content-card') || el.closest('.qrs-ai-summary-card')) {
+        continue;
+      }
+
+      const text = (el.textContent || '').replace(/\s+/g, ' ').trim();
+      if (text.length < 3 || text.length > 70) continue;
+      if (noiseWords.some(w => text.includes(w))) continue;
+
+      const boldEls = Array.from(el.querySelectorAll('b, strong, [style*="font-weight: bold"], [style*="font-weight: 700"], [style*="font-weight: 600"]'));
+      const boldText = boldEls.map(b => b.textContent || '').join('').replace(/\s+/g, ' ').trim();
+      const isBold = boldText.length >= text.length * 0.5;
+      const isNumbered = sectionRegex.test(text);
+
+      if (isBold || isNumbered) {
+        if (!el.id) {
+          el.id = `qrs-sec-heading-${i}`;
         }
-        return {
-          id: host.id,
-          element: host,
+        candidates.push({
+          id: el.id,
+          element: el,
           text,
-          level: 3,
-        };
-      });
+          level: isNumbered ? 2 : 3,
+        });
+      }
+    }
+
+    const deduped: TocHeadingItem[] = [];
+    for (const item of candidates) {
+      if (deduped.length === 0 || deduped[deduped.length - 1].text !== item.text) {
+        deduped.push(item);
+      }
+    }
+
+    if (deduped.length >= 2) {
+      this.headings = deduped.slice(0, 35);
     }
   }
 

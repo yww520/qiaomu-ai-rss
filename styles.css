@@ -1230,30 +1230,54 @@
   display: none;
 }
 
-.qrs-toc-item {
-  background: transparent;
-  border: none;
-  box-shadow: none;
-  padding: 3px 0;
-  margin: 0;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  position: relative;
-  outline: none;
+/* Notion-style reset for button items: completely strip any Obsidian theme button background, border, radius, shadow */
+.qrs-root .qrs-toc-item,
+.qrs-toc-nav button.qrs-toc-item,
+button.qrs-toc-item {
+  all: unset !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  outline: none !important;
+  padding: 3.5px 0 !important;
+  margin: 0 !important;
+  min-height: 0 !important;
+  min-width: 0 !important;
+  height: auto !important;
+  width: auto !important;
+  cursor: pointer !important;
+  position: relative !important;
+  -webkit-appearance: none !important;
+  appearance: none !important;
 }
 
-.qrs-toc-item:focus-visible {
-  outline: none;
+.qrs-root .qrs-toc-item:hover,
+.qrs-root .qrs-toc-item:active,
+.qrs-root .qrs-toc-item:focus,
+.qrs-root .qrs-toc-item:focus-visible,
+.qrs-toc-nav button.qrs-toc-item:hover,
+.qrs-toc-nav button.qrs-toc-item:active,
+.qrs-toc-nav button.qrs-toc-item:focus,
+.qrs-toc-nav button.qrs-toc-item:focus-visible {
+  background: transparent !important;
+  background-color: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
 }
 
+/* Notion-style ultra-thin minimalist lines */
 .qrs-toc-tick {
   display: block;
-  height: 2.5px;
-  border-radius: 2px;
+  height: 1.5px !important;
+  border-radius: 1px !important;
   background-color: var(--text-muted);
-  opacity: 0.35;
+  opacity: 0.32;
   transition: width 0.2s cubic-bezier(0.16, 1, 0.3, 1),
               background-color 0.2s ease,
               opacity 0.2s ease,
@@ -1261,12 +1285,12 @@
               box-shadow 0.2s ease;
 }
 
-.qrs-toc-tick-h1 { width: 22px; }
-.qrs-toc-tick-h2 { width: 19px; }
-.qrs-toc-tick-h3 { width: 15px; }
+.qrs-toc-tick-h1 { width: 18px !important; }
+.qrs-toc-tick-h2 { width: 15px !important; }
+.qrs-toc-tick-h3 { width: 11px !important; }
 .qrs-toc-tick-h4,
 .qrs-toc-tick-h5,
-.qrs-toc-tick-h6 { width: 10px; }
+.qrs-toc-tick-h6 { width: 8px !important; }
 
 .qrs-toc-item:hover .qrs-toc-tick {
   opacity: 0.85;
@@ -1275,19 +1299,19 @@
   transform-origin: right center;
 }
 
-/* Active state: exactly matches reference screenshot */
+/* Active state: crisp accented line matching Notion outline */
 .qrs-toc-item.is-active .qrs-toc-tick {
   opacity: 1;
-  background-color: #ffffff;
-  height: 3px;
+  background-color: #ffffff !important;
+  height: 2px !important;
   transform: scaleX(1.15);
   transform-origin: right center;
-  box-shadow: 0 0 8px rgba(255, 255, 255, 0.65), 0 0 2px rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 6px rgba(255, 255, 255, 0.7);
 }
 
 .theme-light .qrs-toc-item.is-active .qrs-toc-tick {
-  background-color: var(--interactive-accent, #0969da);
-  box-shadow: 0 0 6px rgba(9, 105, 218, 0.4);
+  background-color: var(--interactive-accent, #0969da) !important;
+  box-shadow: 0 0 5px rgba(9, 105, 218, 0.4);
 }
 
 .theme-light .qrs-toc-tick {
