@@ -336,8 +336,8 @@ export class WeMpClient {
           }),
           throw: false,
         });
-        if (wereadRes.status === 200) {
-          return { ok: true, message: '微信读书已成功采集最新文章并生成 RSS！' };
+        if (wereadRes.status === 200 && (wereadRes.json?.data?.collected ?? 0) > 0) {
+          return { ok: true, message: `微信读书已成功采集 ${wereadRes.json.data.collected} 篇最新文章并生成 RSS！` };
         }
       } catch {
         // fallback to mps/update
@@ -346,6 +346,13 @@ export class WeMpClient {
       const url = `${this.baseUrl}/api/v1/wx/mps/update/${mpId}`;
       const res = await requestUrl({ url, method: 'GET', headers, throw: false });
       if (res.status === 200) {
+        const json = res.json;
+        if (json?.code === 0) {
+          const count = json.data?.total ?? json.data?.list?.length ?? 0;
+          return { ok: true, message: count > 0 ? `云端同步成功，抓取到 ${count} 篇新文章！` : '已触发云端同步，当前暂无更新或等待抓取' };
+        } else if (json?.message) {
+          return { ok: false, message: `云端同步提示: ${json.message}` };
+        }
         return { ok: true, message: '已触发云端同步抓取，请稍候刷新查看' };
       }
       return { ok: false, message: `触发同步失败 (HTTP ${res.status})` };
