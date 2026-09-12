@@ -14,19 +14,31 @@ export class Subscriptions {
     this.transport = transport ?? (url => requestUrl({ url, method: 'GET', throw: false }));
   }
   private async fetch(url: string, doc: Document) {
-    let timer: number | undefined;
-    try {
-      const response = await Promise.race([
-        this.transport(url),
-        new Promise<never>((_, reject) => { timer = window.setTimeout(() => reject(new Error('订阅源响应超时，请重试。')), 20000); }),
-      ]);
-      if (response.status < 200 || response.status >= 300) throw new Error(`订阅源暂不可用（HTTP ${response.status}）。`);
-      return await parseFeed(response.text, url, doc);
-    } catch (error) {
-      // Do not include transport errors: private feed URLs can contain access tokens.
-      if (error instanceof Error && /^(订阅源|文件超过|不支持包含|XML 格式|这个地址)/.test(error.message)) throw error;
-      throw new Error('无法读取订阅源，请检查地址和网络。');
-    } finally { window.clearTimeout(timer); }
+    const maxRetries = 2;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      let timer: number | undefined;
+      try {
+        const response = await Promise.race([
+          this.transport(url),
+          new Promise<never>((_, reject) => { timer = window.setTimeout(() => reject(new Error('订阅源响应超时，请重试。')), 20000); }),
+        ]);
+        if (response.status >= 500 && response.status <= 504 && attempt < maxRetries) {
+          await new Promise(r => setTimeout(r, 800 * (attempt + 1)));
+          continue;
+        }
+        if (response.status < 200 || response.status >= 300) throw new Error(`订阅源暂不可用（HTTP ${response.status}）。`);
+        return await parseFeed(response.text, url, doc);
+      } catch (error) {
+        if (attempt < maxRetries && error instanceof Error && /50[0-4]/.test(error.message)) {
+          await new Promise(r => setTimeout(r, 800 * (attempt + 1)));
+          continue;
+        }
+        // Do not include transport errors: private feed URLs can contain access tokens.
+        if (error instanceof Error && /^(订阅源|文件超过|不支持包含|XML 格式|这个地址)/.test(error.message)) throw error;
+        throw new Error('无法读取订阅源，请检查地址和网络。');
+      } finally { window.clearTimeout(timer); }
+    }
+    throw new Error('订阅源暂不可用。');
   }
   async add(raw: string, group: string, doc: Document): Promise<Subscription> {
     const url = feedUrl(raw);

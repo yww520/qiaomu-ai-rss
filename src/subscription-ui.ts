@@ -208,6 +208,8 @@ export class SubscriptionManager extends Modal {
             subBtn.setText('订阅中…');
             try {
               const res = await client.subscribe(acc);
+              // Wait 600ms for We-MP-RSS server to initialize the XML feed endpoint
+              await new Promise(r => setTimeout(r, 600));
               await this.plugin.subscriptions.add(res.feedUrl, '微信公众号', this.contentEl.ownerDocument);
               new Notice(`已成功订阅公众号：${acc.name}`);
               subBtn.setText('已关注');
@@ -216,9 +218,10 @@ export class SubscriptionManager extends Modal {
               });
               this.changed();
             } catch (subErr) {
-              new Notice(`订阅出错: ${subErr instanceof Error ? subErr.message : String(subErr)}`);
+              const msg = subErr instanceof Error ? subErr.message : String(subErr);
+              new Notice(`订阅出错: ${msg}`);
               subBtn.disabled = false;
-              subBtn.setText('重试');
+              subBtn.setText('关注订阅');
             }
           };
         }
