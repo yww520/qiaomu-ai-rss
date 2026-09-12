@@ -202,13 +202,42 @@ describe('paths and persistence', () => {
     const e2: Entry = { id: 'local-2', sourceId: 'src-2', title: 'Visa发布链上借贷', link: 'https://mp.weixin.qq.com/s/QT9YTiFO_fm1gs1LRvZGQg', publishedTs: 1000, content: 'longer content here' };
     const e3: Entry = { id: 'local-3', sourceId: 'src-3', title: 'Another article', link: 'https://mp.weixin.qq.com/s/other123', publishedTs: 2000, content: 'text' };
 
-    expect(canonicalEntryKey(e1)).toBe('wx:/s/QT9YTiFO_fm1gs1LRvZGQg');
-    expect(canonicalEntryKey(e2)).toBe('wx:/s/QT9YTiFO_fm1gs1LRvZGQg');
+    expect(canonicalEntryKey(e1)).toBe('wx:title:visa发布链上借贷');
+    expect(canonicalEntryKey(e2)).toBe('wx:title:visa发布链上借贷');
 
     const result = deduplicateEntriesList([e1, e2, e3]);
     expect(result).toHaveLength(2);
     // Should keep e2 because it has longer content
-    expect(result.find(r => canonicalEntryKey(r) === 'wx:/s/QT9YTiFO_fm1gs1LRvZGQg')?.id).toBe('local-2');
+    expect(result.find(r => canonicalEntryKey(r) === 'wx:title:visa发布链上借贷')?.id).toBe('local-2');
+  });
+  it('deduplicates cross-channel WeChat entries with long and short URLs by title, preferring dedicated channel', () => {
+    const eFeatured: Entry = {
+      id: 'feat-1',
+      sourceId: 'featured-feed',
+      sourceName: '精选文章',
+      author: '精选文章',
+      title: '芯片之岛的浮沉人生：半导体如何渗透中国台湾社会的每一个隐秘角落？',
+      link: 'http://mp.weixin.qq.com/s?__biz=MzY4NDIxMjQ0Ng==&mid=2247485883&idx=1&sn=43ba874f676b7e77a760824b2bf6017a#rd',
+      publishedTs: 1000,
+      content: 'long content',
+    };
+    const eSpecific: Entry = {
+      id: 'spec-1',
+      sourceId: '6dgj-feed',
+      sourceName: '6点关机',
+      author: '6点关机',
+      title: '芯片之岛的浮沉人生：半导体如何渗透中国台湾社会的每一个隐秘角落？',
+      link: 'https://mp.weixin.qq.com/s/Ws04tBoLBGO4ZfL6FainWw',
+      publishedTs: 1000,
+      content: 'long content',
+    };
+
+    expect(canonicalEntryKey(eFeatured)).toBe(canonicalEntryKey(eSpecific));
+    const result = deduplicateEntriesList([eFeatured, eSpecific]);
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe('spec-1');
+    expect(result[0].sourceName).toBe('6点关机');
+    expect(result[0].link).toBe('https://mp.weixin.qq.com/s/Ws04tBoLBGO4ZfL6FainWw');
   });
   it('filters out deleted entries using deletedIds', () => {
     const e1: Entry = { id: 'local-1', sourceId: 'src-1', title: 'Article 1', link: 'https://mp.weixin.qq.com/s/del1', publishedTs: 1000 };

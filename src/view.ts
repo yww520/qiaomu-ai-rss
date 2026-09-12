@@ -75,11 +75,27 @@ export class ReaderView extends ItemView {
       if (deleted.has(entry.id)) continue;
       const key = canonicalEntryKey(entry);
       if (deleted.has(key)) continue;
+      if (entry.link) {
+        if (deleted.has(entry.link)) continue;
+        try {
+          const u = new URL(entry.link);
+          if (u.hostname.includes('mp.weixin.qq.com') && u.pathname.startsWith('/s/')) {
+            if (deleted.has(`wx:${u.pathname}`)) continue;
+          }
+        } catch {}
+      }
       const existing = map.get(key);
       if (!existing) {
         map.set(key, entry);
       } else {
-        map.set(key, this.pickBetterEntry(existing, entry));
+        const better = this.pickBetterEntry(existing, entry);
+        const other = better === existing ? entry : existing;
+        const merged = { ...better };
+        if (!merged.aiSummary && other.aiSummary) merged.aiSummary = other.aiSummary;
+        if (!merged.aiChat?.length && other.aiChat?.length) merged.aiChat = other.aiChat;
+        if (!merged.rewrite && other.rewrite) merged.rewrite = other.rewrite;
+        if (!merged.summaryZh && other.summaryZh) merged.summaryZh = other.summaryZh;
+        map.set(key, merged);
       }
     }
     return Array.from(map.values()).sort((a, b) => (b.publishedTs || 0) - (a.publishedTs || 0));
@@ -95,6 +111,17 @@ export class ReaderView extends ItemView {
     const bRead = state.readIds.includes(b.id);
     if (aRead && !bRead) return a;
     if (bRead && !aRead) return b;
+
+    // Prefer dedicated channel over aggregate/featured feeds
+    const aIsFeatured = (a.sourceName === '精选文章' || a.author === '精选文章');
+    const bIsFeatured = (b.sourceName === '精选文章' || b.author === '精选文章');
+    if (bIsFeatured && !aIsFeatured) return a;
+    if (aIsFeatured && !bIsFeatured) return b;
+
+    const aIsShortWx = a.link?.includes('mp.weixin.qq.com/s/') && !a.link?.includes('__biz=');
+    const bIsShortWx = b.link?.includes('mp.weixin.qq.com/s/') && !b.link?.includes('__biz=');
+    if (aIsShortWx && !bIsShortWx) return a;
+    if (bIsShortWx && !aIsShortWx) return b;
 
     if (a.rewrite && !b.rewrite) return a;
     if (b.rewrite && !a.rewrite) return b;
@@ -113,6 +140,15 @@ export class ReaderView extends ItemView {
     const deletedSet = new Set(this.plugin.state.deletedIds || []);
     deletedSet.add(id);
     if (key) deletedSet.add(key);
+    if (entry.link) {
+      deletedSet.add(entry.link);
+      try {
+        const u = new URL(entry.link);
+        if (u.hostname.includes('mp.weixin.qq.com') && u.pathname.startsWith('/s/')) {
+          deletedSet.add(`wx:${u.pathname}`);
+        }
+      } catch {}
+    }
     this.plugin.state.deletedIds = Array.from(deletedSet).slice(-2000);
 
     this.entries = this.entries.filter(e => e.id !== id && canonicalEntryKey(e) !== key);

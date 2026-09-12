@@ -115,10 +115,20 @@ export function initialState(data: unknown): State { return stateSchema.parse(da
 export function titleOf(entry: Entry): string { return entry.titleZh?.trim() || entry.title; }
 export function canonicalEntryKey(entry?: Pick<Entry, 'id' | 'link' | 'title'> | null): string {
   if (!entry) return '';
+  const cleanTitle = (entry.title || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/\s+/g, ' ');
+
   if (entry.link) {
     try {
       const u = new URL(entry.link);
       if (u.hostname.includes('mp.weixin.qq.com')) {
+        // Unify cross-channel WeChat articles that share the same title across long and short URLs
+        if (cleanTitle.length >= 4) {
+          return `wx:title:${cleanTitle}`;
+        }
         if (u.pathname.startsWith('/s/')) {
           return `wx:${u.pathname}`;
         }
@@ -139,6 +149,9 @@ export function canonicalEntryKey(entry?: Pick<Entry, 'id' | 'link' | 'title'> |
       const search = u.searchParams.toString() ? `?${u.searchParams.toString()}` : '';
       return `url:${u.origin}${cleanPath}${search}`;
     } catch {
+      if (cleanTitle.length >= 4 && entry.link.includes('mp.weixin.qq.com')) {
+        return `wx:title:${cleanTitle}`;
+      }
       return `link:${entry.link.trim()}`;
     }
   }
@@ -151,16 +164,49 @@ export function deduplicateEntriesList(entries: Entry[], deletedIds?: string[]):
     if (deleted.has(entry.id)) continue;
     const key = canonicalEntryKey(entry);
     if (deleted.has(key)) continue;
+    if (entry.link) {
+      if (deleted.has(entry.link)) continue;
+      try {
+        const u = new URL(entry.link);
+        if (u.hostname.includes('mp.weixin.qq.com') && u.pathname.startsWith('/s/')) {
+          if (deleted.has(`wx:${u.pathname}`)) continue;
+        }
+      } catch {}
+    }
     const existing = map.get(key);
     if (!existing) {
       map.set(key, entry);
     } else {
-      const aLen = existing.content?.length || 0;
-      const bLen = entry.content?.length || 0;
-      const chosen = bLen > aLen ? { ...entry } : { ...existing };
-      const other = bLen > aLen ? existing : entry;
+      const existingIsFeatured = existing.sourceName === '精选文章' || existing.author === '精选文章';
+      const entryIsFeatured = entry.sourceName === '精选文章' || entry.author === '精选文章';
+      let chosen: Entry;
+      let other: Entry;
+      if (existingIsFeatured && !entryIsFeatured) {
+        chosen = { ...entry };
+        other = existing;
+      } else if (!existingIsFeatured && entryIsFeatured) {
+        chosen = { ...existing };
+        other = entry;
+      } else {
+        const existingIsShortWx = existing.link?.includes('mp.weixin.qq.com/s/') && !existing.link?.includes('__biz=');
+        const entryIsShortWx = entry.link?.includes('mp.weixin.qq.com/s/') && !entry.link?.includes('__biz=');
+        if (entryIsShortWx && !existingIsShortWx) {
+          chosen = { ...entry };
+          other = existing;
+        } else if (existingIsShortWx && !entryIsShortWx) {
+          chosen = { ...existing };
+          other = entry;
+        } else {
+          const aLen = existing.content?.length || 0;
+          const bLen = entry.content?.length || 0;
+          chosen = bLen > aLen ? { ...entry } : { ...existing };
+          other = bLen > aLen ? existing : entry;
+        }
+      }
       if (!chosen.aiSummary && other.aiSummary) chosen.aiSummary = other.aiSummary;
       if (!chosen.aiChat?.length && other.aiChat?.length) chosen.aiChat = other.aiChat;
+      if (!chosen.rewrite && other.rewrite) chosen.rewrite = other.rewrite;
+      if (!chosen.summaryZh && other.summaryZh) chosen.summaryZh = other.summaryZh;
       map.set(key, chosen);
     }
   }
