@@ -667,8 +667,18 @@ export class ImportWechatArticleModal extends Modal {
             targetFeedId = newFeed.id;
           }
 
-          const featuredSub = this.plugin.state.subscriptions.find(s => s.id === targetFeedId);
-          const addedEntry = featuredSub?.entries.find(e => e.link?.includes(url.trim()) || url.trim().includes(e.link || ''));
+          let featuredSub = this.plugin.state.subscriptions.find(s => s.id === targetFeedId);
+          let addedEntry = featuredSub?.entries.find(e => e.link?.includes(url.trim()) || url.trim().includes(e.link || ''));
+
+          // If not in feed yet, retry refresh up to 4 times (2s delay each) to allow cloud XML feed regeneration
+          for (let retry = 0; !addedEntry && retry < 4; retry++) {
+            statusMsg.setText(`文章云端提取成功，正在等待订阅源生成 (${retry + 1}/4)…`);
+            await new Promise(r => setTimeout(r, 2000));
+            await this.plugin.subscriptions.refresh([targetFeedId], this.contentEl.ownerDocument, true);
+            featuredSub = this.plugin.state.subscriptions.find(s => s.id === targetFeedId);
+            addedEntry = featuredSub?.entries.find(e => e.link?.includes(url.trim()) || url.trim().includes(e.link || ''));
+          }
+
           let matchedSubName = '';
 
           if (addedEntry) {
@@ -693,6 +703,9 @@ export class ImportWechatArticleModal extends Modal {
                 targetFeedId = matchedSub.id;
               }
             }
+          } else if (featuredSub) {
+            // Reset updatedAt so cache lock does not block subsequent manual refreshes
+            featuredSub.updatedAt = 0;
           }
 
           if (targetFeedId) {
@@ -707,8 +720,12 @@ export class ImportWechatArticleModal extends Modal {
             await this.plugin.persist();
             this.plugin.resetViews();
           }
-          const locationTip = matchedSubName ? `已自动归类至「${matchedSubName}」及「精选文章」` : '已归入「精选文章」';
-          new Notice(res.title ? `🎉「${res.title}」抓取成功！${locationTip}` : `文章已成功抓取！${locationTip}`, 7000);
+          if (addedEntry) {
+            const locationTip = matchedSubName ? `已自动归类至「${matchedSubName}」及「精选文章」` : '已归入「精选文章」';
+            new Notice(`🎉「${addedEntry.title}」导入成功！${locationTip}`, 7000);
+          } else {
+            new Notice(res.title ? `🎉「${res.title}」云端提取成功！订阅源更新可能有数秒延迟，若列表中未显示请点击顶部「刷新文章」查看。` : '文章已提取成功！订阅源生成可能有数秒延迟，若未显示请点击顶部「刷新文章」查看。', 8000);
+          }
           this.close();
           this.onSuccess();
         } else {

@@ -92,7 +92,8 @@ export class Subscriptions {
   private refreshOne(id: string, doc: Document, force: boolean): Promise<void> {
     const ongoing = this.pending.get(id); if (ongoing) return ongoing;
     const feed = this.state().subscriptions.find(item => item.id === id);
-    if (!feed || (!force && Date.now() - feed.updatedAt < 300000)) return Promise.resolve();
+    const minInterval = feed?.url?.includes('FEATURED_ARTICLES') ? 15000 : 60000;
+    if (!feed || (!force && Date.now() - feed.updatedAt < minInterval)) return Promise.resolve();
     const refresh = async () => {
       try {
         if (force && this.wempUpdater) {
