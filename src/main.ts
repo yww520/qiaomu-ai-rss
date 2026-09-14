@@ -523,8 +523,8 @@ class RssSettings extends PluginSettingTab {
       ] },
       { name: '本地数据', desc: '已读、收藏与缓存保存在当前库。浏览频道、切换文章或刷新时请求服务，不会上传你的笔记。' },
       { type: 'group', heading: '微信公众号 (We-MP-RSS)', items: [
-        { name: '云端服务地址', desc: '部署了 we-mp-rss 服务的地址（例如 http://43.156.114.156:8001）。', render: setting => {
-          setting.addText(text => text.setPlaceholder('http://43.156.114.156:8001').setValue(settings.weMpServerUrl).onChange(async value => {
+        { name: '云端服务地址', desc: '部署了 we-mp-rss 服务的地址（例如 http://127.0.0.1:8001 或 http://your-server-ip:8001）。', render: setting => {
+          setting.addText(text => text.setPlaceholder('http://127.0.0.1:8001').setValue(settings.weMpServerUrl).onChange(async value => {
             settings.weMpServerUrl = value.trim();
             await this.plugin.persist();
           }));
