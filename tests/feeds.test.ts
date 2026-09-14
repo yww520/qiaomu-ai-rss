@@ -136,7 +136,7 @@ describe('local subscription lifecycle', () => {
     vi.useFakeTimers(); const state = initialState(null);
     const service = new Subscriptions(() => state, async () => {}, () => new Promise(() => {}));
     const assertion = expect(service.add('https://example.com/feed', '', document)).rejects.toThrow('超时');
-    await vi.advanceTimersByTimeAsync(20001); await assertion; vi.useRealTimers();
+    await vi.advanceTimersByTimeAsync(60001); await assertion; vi.useRealTimers();
   });
   it('calls wempUpdater for WeChat MP feeds before fetching on forced refresh', async () => {
     const state = initialState(null);
@@ -148,5 +148,20 @@ describe('local subscription lifecycle', () => {
     await service.refresh([feed.id], document, true);
     expect(wempUpdater).toHaveBeenCalledWith('MP_WXS_123456', 'Test MP');
     expect(transport).toHaveBeenCalledWith(feed.url);
+  });
+  it('does not hammer wempUpdater for all feeds in batch refresh', async () => {
+    const state = initialState(null);
+    const transport = vi.fn(async () => ({ status: 200, text: rss() }));
+    const wempUpdater = vi.fn(async () => ({ ok: true, message: 'updated' }));
+    const service = new Subscriptions(() => state, async () => {}, transport, wempUpdater);
+    await service.import([
+      { url: 'http://127.0.0.1:8001/feed/MP_WXS_111.xml', name: 'MP 1', group: '' },
+      { url: 'http://127.0.0.1:8001/feed/MP_WXS_222.xml', name: 'MP 2', group: '' },
+    ]);
+    state.subscriptions[0].entries = [{ id: '1', sourceId: 's1', origin: 'local', sourceName: 'MP 1', title: 'A', link: 'https://mp.weixin.qq.com/s/1' }];
+    state.subscriptions[1].entries = [{ id: '2', sourceId: 's2', origin: 'local', sourceName: 'MP 2', title: 'B', link: 'https://mp.weixin.qq.com/s/2' }];
+    await service.refresh(state.subscriptions.map(s => s.id), document, true);
+    expect(wempUpdater).not.toHaveBeenCalled();
+    expect(transport).toHaveBeenCalledTimes(2);
   });
 });

@@ -210,11 +210,11 @@ export class SubscriptionManager extends Modal {
               const res = await client.subscribe(acc);
               // Wait 600ms for We-MP-RSS server to initialize the XML feed endpoint
               await new Promise(r => setTimeout(r, 600));
-              await this.plugin.subscriptions.add(res.feedUrl, '微信公众号', this.contentEl.ownerDocument);
+              const newFeed = await this.plugin.subscriptions.add(res.feedUrl, '微信公众号', this.contentEl.ownerDocument);
               new Notice(`已成功订阅公众号：${acc.name}`);
               subBtn.setText('已关注');
               void client.updateMpArticles(acc.fakeid || acc.id, acc.name).then(async () => {
-                await this.plugin.subscriptions.refresh([], this.contentEl.ownerDocument, true);
+                await this.plugin.subscriptions.refresh([newFeed.id], this.contentEl.ownerDocument, true);
               });
               this.changed();
             } catch (subErr) {

@@ -20,7 +20,7 @@ export class Subscriptions {
       try {
         const response = await Promise.race([
           this.transport(url),
-          new Promise<never>((_, reject) => { timer = window.setTimeout(() => reject(new Error('订阅源响应超时，请重试。')), 20000); }),
+          new Promise<never>((_, reject) => { timer = window.setTimeout(() => reject(new Error('订阅源响应超时，请重试。')), 60000); }),
         ]);
         if (response.status >= 500 && response.status <= 504 && attempt < maxRetries) {
           await new Promise(r => setTimeout(r, 800 * (attempt + 1)));
@@ -75,11 +75,12 @@ export class Subscriptions {
   }
   async refresh(ids: string[], doc: Document, force = false, updated?: () => void): Promise<void> {
     const remaining = [...ids];
+    const isBatch = remaining.length > 1;
     const worker = async () => {
       while (remaining.length) {
         const id = remaining.shift();
         if (id) {
-          await this.refreshOne(id, doc, force);
+          await this.refreshOne(id, doc, force, !isBatch);
           updated?.();
           if (remaining.length > 0) {
             await new Promise(r => setTimeout(r, 200));
@@ -89,14 +90,15 @@ export class Subscriptions {
     };
     await Promise.all(Array.from({ length: Math.min(2, remaining.length) }, worker));
   }
-  private refreshOne(id: string, doc: Document, force: boolean): Promise<void> {
+  private refreshOne(id: string, doc: Document, force: boolean, allowCloudSync = true): Promise<void> {
     const ongoing = this.pending.get(id); if (ongoing) return ongoing;
     const feed = this.state().subscriptions.find(item => item.id === id);
     const minInterval = feed?.url?.includes('FEATURED_ARTICLES') ? 15000 : 60000;
     if (!feed || (!force && Date.now() - feed.updatedAt < minInterval)) return Promise.resolve();
     const refresh = async () => {
       try {
-        if (force && this.wempUpdater) {
+        const isFeedEmpty = !feed.entries || feed.entries.length === 0;
+        if (force && (allowCloudSync || isFeedEmpty) && this.wempUpdater) {
           const match = feed.url.match(/\/feed\/(?:MP_WXS_)?([0-9A-Za-z_-]+)\.xml/);
           if (match) {
             const mpId = match[1].startsWith('MP_WXS_') ? match[1] : `MP_WXS_${match[1]}`;
