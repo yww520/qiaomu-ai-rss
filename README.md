@@ -1,149 +1,162 @@
-<img src="docs/images/qiaomu-rss-icon.png" alt="Qiaomu AI RSS" width="80" />
+<div align="center">
+  <img src="docs/images/qiaomu-rss-icon.png" alt="Qiaomu RSS Plus" width="84" />
+  <h1>Qiaomu RSS Plus · 乔木 RSS 增强版</h1>
+  <p><strong>专为中文深度阅读与知识创作者打造：微信公众号双轨订阅 · 万字全文无截断 · 防盗链本地图床 · Notion 风格细线大纲 · 行间高亮批注 ·「读-记-存-用」全闭环</strong></p>
 
-# Qiaomu AI RSS · 乔木 RSS
+  <p>
+    <a href="https://obsidian.md"><img src="https://img.shields.io/badge/Obsidian-v1.13.0+-purple.svg?style=flat-square" alt="Obsidian Version" /></a>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPL%20v3-blue.svg?style=flat-square" alt="License GPL-3.0" /></a>
+    <a href="https://github.com/yww520/qiaomu-ai-rss"><img src="https://img.shields.io/badge/GitHub-Qiaomu%20RSS%20Plus-success.svg?style=flat-square" alt="GitHub Repo" /></a>
+    <a href="https://github.com/joeseesun/qiaomu-ai-rss"><img src="https://img.shields.io/badge/Forked%20from-joeseesun%2Fqiaomu--ai--rss-informational?style=flat-square" alt="Upstream" /></a>
+  </p>
+</div>
 
-**[在 Obsidian 官方插件库安装 · Install](https://community.obsidian.md/plugins/qiaomu-ai-rss)**
+---
 
-在 Obsidian 中阅读 [乔木 RSS](https://rss.qiaomu.ai/) 精选文章，也可以添加自己的 RSS / Atom 订阅，把值得记住的文章链接加入今日日记。
+## 🌟 为什么需要 Qiaomu RSS Plus？
 
-Read Qiaomu feeds and your own RSS / Atom subscriptions in a native Obsidian view, switch between original articles and available Chinese AI rewrites or translations, and add article links to your Daily Note.
+原版 **Qiaomu AI RSS** 由 [@joeseesun（向阳乔木）](https://github.com/joeseesun) 精心打造，凭借内置的朱雀仿宋排版、双栏自适应版心和优雅的阅读交互，堪称 Obsidian 生态中最具美感的阅读插件之一。
 
-![Qiaomu AI RSS 缩略图列表与今日日记分屏](docs/images/listing-2026-09/reading-notes.png)
+然而在中文互联网的深度阅读场景中，知识创作者往往面临几大痛点：
+1. **中文一手深度内容沉淀在微信公众号**：科技长文、投研笔记、深度访谈绝大多数发布在微信生态中，原版受限于风控无法直接订阅微信；
+2. **万字长文截断与图片防盗链失效**：深度干货长文常被限制字符截断并强制跳转原文，且微信图片因防盗链机制容易裂开或在原推文删除后 404；
+3. **缺少长文目录导航与随读批注**：面对长文缺乏章节索引小地图；阅读过程中产生的灵感无法原地高亮与批注，无法沉淀为可复用的知识卡片。
 
-## 功能
+**Qiaomu RSS Plus（乔木 RSS 增强版）** 在完整继承原版全部优良特性的基础上，深度重构了数据同步、去重裁决、文章解析与阅读交互组件，补齐了中文信息消费最核心的拼图，让知识在 Obsidian 本地真正实现 **「读 - 记 - 存 - 用」** 四位一体闭环。
 
-- **频道切换**：桌面端就近弹出分组菜单，手机端使用底部面板；支持搜索、键盘选择和订阅分组展开。每个频道独立保存文章、列表/正文位置及筛选搜索条件；切回或重开插件时恢复，重复选择当前频道不会重置。已访问频道保留加载的列表，点击刷新获取新内容。
+---
 
-- **探索订阅**：9 个精选作者与 1,342 个中文独立博客，支持搜索和一键订阅。乔木博客作为内置频道提供。
+## 🚀 核心增强特性一览
 
-- **库内 Markdown**：在插件设置中通过原生文件夹搜索选择剪藏目录或其他文件夹，频道菜单即可阅读其中及子目录的 Markdown。正文使用 Obsidian 原生渲染，支持本地附件和内部链接；刷新列表或重新打开文章可读取变化。
-- **我的订阅**：添加 RSS / Atom 地址、重命名、分组、取消订阅；OPML 导入预览、去重与导出。个人订阅直接在本机获取，无需乔木账号。
+### 1. 📱 微信公众号双轨订阅生态 (WeChat Dual-Track)
+彻底打破微信生态的封闭壁垒，提供两条优雅的订阅路径：
+- **途径一：微信读书（WeRead）联动静默同步**：扫码一次微信读书授权（配合轻量级云端 `we-mp-rss` 服务），你在微信读书中关注的所有公众号及精选推荐流，会在后台自动生成私有安全 RSS，静默无感同步进 Obsidian。
+- **途径二：弹窗关键词直搜 + 扫码添加**：在 Obsidian 插件面板直接搜索公众号名称，系统直接调出公众号简介、头像和关注二维码，手机扫码关注后秒级添加进专属频道。
+- **一键扫码诊断面板**：设置中内置微信授权状态与 Session 续期面板，过期时一键弹码重扫，平滑无感知。
 
-- 阅读优先双栏：紧凑工具栏、可拖动调宽的列表、一键专注阅读；有配图的文章在列表中显示本地缓存缩略图。
-- 分组频道选择器：聚合、个人分组、乔木频道和订阅源各自归类，使用图标或名称缩写快速识别。
-- 插件设置和正文工具栏共用阅读设置，前台面板跟随吸顶工具栏：内置朱雀仿宋常用字集，以及系统宋体/黑体和自选设备字体；支持 14–32px 字号、1.5–2.4 倍行距和 28/36/44 字版心宽度；调整立即生效并在重启后保留。
-- 浏览所有频道的最近 100 篇文章；单个频道按游标加载更早文章。
-- 搜索当前载入的文章，按未读、收藏筛选。
-- 切换乔木改写、中文翻译、原文。没有生成的版本会明确显示缺失，不自动调用 AI。
-- 已读状态、本地收藏，以及最近 40 篇打开过的文章缓存。收藏文章另外保留完整内容。
-- 点击“记到今日日记”，以普通段落追加文章标题、内部回跳链接及“原文”链接，并在桌面端分屏打开今日日记；日记不存在时自动创建，重复点击不重复写入。
-- 摘录浮层默认开启，可在插件设置的“阅读与摘录”中关闭；选中正文可摘录到今日日记或当前笔记，也可将选中文字拖入处于编辑模式的笔记。日记中同篇文章只保留一个标题链接，后续摘录归入该文章段落。内部链接会在 RSS 阅读器中打开保存的文章版本；本地副本独立于最近文章缓存保留，依赖插件及其数据。
-- 已加载的图片可拖入处于编辑模式的笔记，由 Obsidian 保存到配置的附件位置并插入本地图片引用。支持 RSS 图片和库内 Markdown 图片，支持 PNG、JPEG、GIF、WebP、AVIF（最多 8 MB）。
-- 外部正文经过 HTML 清理，脚本、嵌入页面与可执行代码块不会运行。文章图片默认显示，下载到本地缓存后再渲染。
+<div align="center">
+  <img src="docs/images/plus/fig1_wechat_manage.png" alt="微信公众号管理与订阅弹窗" width="85%" />
+  <p><em>▲ 在 Obsidian 插件内直接搜索添加微信公众号与订阅源管理后台</em></p>
+</div>
 
-本插件参考自有 [QMReader iOS](https://github.com/joeseesun/qmreader-ios) 的产品交互，根据 [QMReader 服务](https://github.com/joeseesun/qmreader) 的公共 API 独立开发。它不是其他 Obsidian RSS 插件的 fork。
+---
 
-## 安装
+### 2. ⚡ 跨渠道长短链接智能对齐与标题去重 (Canonical Key Deduplication)
+- **破除长短链“罗生门”**：聚合推荐流通常携带长参数链接（`__biz`、`mid`、`idx`），而独立频道常为精简短链（`mp.weixin.qq.com/s/...`）。增强版重构了 `canonicalEntryKey` 算法，引入基于清洗后标题特征的归一化对齐机制。
+- **专属频道优先裁决**：当聚合源与专属公众号频道发生推文冲突时，自动保留专属频道的纯净短链，并将阅读标记、本地已读状态与 AI 摘要无缝合并，彻底杜绝重复推文刷屏。
 
-需要 Obsidian **1.13.0 或更新版本**。
+---
 
-### 官方插件库
+### 3. 📥 单篇微信长文秒级剪藏 (Instant Article Clipper)
+- 遇到朋友发来的爆款文章不想关注整个公众号？
+- 直接在插件中粘贴任意 `mp.weixin.qq.com/...` 链接，后台无头浏览器秒级抓取全文，自动解析作者并归类至对应专属公众号频道。
+- **异步轮询与防抖对齐**：内置 4 轮异步轮询机制与智能重试，将本地缓存锁优化至 15 秒，彻底解决云端 Feed 生成延迟导致的“添加成功却刷新不出来”问题。
 
-打开 [官方插件页面](https://community.obsidian.md/plugins/qiaomu-ai-rss)，查看审核状态并点击 **Add to Obsidian** 安装。也可以在 Obsidian 第三方插件的浏览页面搜索 **Qiaomu AI RSS**。若客户端暂未列出，可使用下方 BRAT 或手动安装。
+---
 
-以下 BRAT 与手动安装方式仍然可用。
+### 4. 📖 突破字数截断 & 微信防盗链本地图床 (Unlimited Length & Local Vault)
+- **万字长文完整畅读**：彻底移除原版单篇 100,000 字符限制与截断警告，无论两万字的行业研报还是长篇对话逐字稿，均完整加载呈现。
+- **本地防盗链图床**：针对微信公众号图片防盗链限制，全自动异步将外链图片安全下载固化到 Obsidian 本地 Vault 附件缓存中。即使拔掉网线或原文被删（404），本地全文与图片依然毫秒级秒开。
 
-### BRAT
+---
 
-安装 BRAT 后，添加仓库 `joeseesun/qiaomu-ai-rss`，启用 **Qiaomu AI RSS**。
+### 5. 🗺️ Notion 风格悬浮细线大纲小地图 (Notion-style Floating Mini-TOC)
+- **极简隐形设计**：正文右侧悬浮极简细线大纲（Mini Outline），自适应 H1/H2/H3/H4 标题层级，平时轻量隐形，完全不挤占正文阅读空间。
+- **章节 Tooltip 预览与平滑跳转**：鼠标滑过短线即可浮出黑底白字的原生 Tooltip 章节标题；点击平滑滚动（smooth scroll）直达指定位置；当前阅读小节动态墨绿高亮（`#059669`），长文阅读进度一目了然。
+- **自然时间线分组**：文章列表告别机械的冷冰冰未读红点，按“今天、昨天、本周、更早”自然时间线智能折叠组织。
 
-### 手动安装
+<div align="center">
+  <img src="docs/images/plus/fig2_obsidian_reader.png" alt="沉浸阅读排版与 Notion 细线小地图" width="85%" />
+  <p><em>▲ 沉浸式阅读界面：自然时间线分组、仿宋极简排版与右侧 Notion 风格细线大纲小地图</em></p>
+</div>
 
-1. 从 [Releases](https://github.com/joeseesun/qiaomu-ai-rss/releases) 下载 `main.js`、`manifest.json`、`styles.css`。
-2. 在当前库的配置目录（默认 `.obsidian`）下创建 `plugins/qiaomu-ai-rss/`，将三个文件放入该文件夹。
-3. 在 Obsidian 的第三方插件设置中启用 **Qiaomu AI RSS**。
-4. 点击侧边栏 RSS 图标，或运行命令 **Qiaomu AI RSS: 打开乔木 RSS 阅读器**。
+---
 
-GitHub 发布和官方目录审核是独立流程；每个版本的审核结果以官方页面为准。
+### 6. ✍️ 行间随读高亮与即时批注 (In-line Highlights & Annotations)
+- **随手荧光划线**：鼠标选中文本立即唤起悬浮工具栏，支持荧光黄、薄荷绿、雅致蓝等多种色彩高亮及下划线。
+- **行间即时批注**：选中任意段落敲下灵感思考，批注紧贴原文段落原地常驻展示，如同在实体书边页随手写下批注，阅读思路不被打断。
 
-## 使用
+<div align="center">
+  <img src="docs/images/plus/fig3_inline_highlight.png" alt="行间随读高亮与即时批注" width="85%" />
+  <p><em>▲ 正文阅读时随手划线高亮与行间批注悬浮工具条</em></p>
+</div>
 
-### 探索订阅
+---
 
-![探索订阅](docs/images/listing-2026-09/explore.png)
+### 7. 🔗 「读 - 记 - 存 - 用」卡片笔记与知识图谱闭环 (PKM Integration)
+- **一键沉淀笔记**：阅读完成后，点击顶部笔记图标，即可将整篇高亮金句、行间批注连同文章元数据（标题、作者、日期）一键导出为独立卡片笔记，或追加写入当天的 **Daily Notes（今日日记）**。
+- **双链双向回跳**：导出的笔记自动生成 Obsidian 内部回跳链接（`obsidian://qiaomu-ai-rss?...`），点击即可精准跳回插件内对应文章。
+- **赋能内容创作**：为后续知识图谱串联、二次思考、播客/公众号原创文章创作提供源源不断的素材弹药库。
 
-点击列表顶部 **+ → 探索**，或运行命令 **Qiaomu AI RSS: 探索订阅**。
+---
 
-- **精选订阅**：首批只保留潮流周刊、阮一峰、云风、和菜头、张鑫旭、小众软件、月光博客、Reorx 与 pseudoyu。标准是长期原创、持续更新、RSS 全文与鲜明的个人辨识度，宁缺毋滥；乔木博客直接作为内置频道提供。
-- **独立博客**：来自 [timqian/chinese-independent-blogs](https://github.com/timqian/chinese-independent-blogs) 的 1,342 个带 RSS 地址的博客，保留名称、主页与主题标签；支持搜索、主题筛选和分批浏览。
-- 点击“订阅”会读取并验证源，按主题加入“我的订阅”，并让阅读器记住这个新频道；切回阅读器即可看到文章。已经添加的源显示“已订阅”，点击“开始阅读”可查看全部个人订阅。
-- 目录离线内置，不会在浏览时请求所有网站。独立博客是社区目录快照，部分旧地址可能失效；添加失败时显示原因和重试入口。
+## 📊 原版 vs 增强版功能对比
 
-[目录来源、授权与可用性记录](docs/DISCOVERY.md) · [精选目录截图](docs/images/listing-2026-09/explore.png)
+| 功能特性 | Qiaomu AI RSS (原版) | Qiaomu RSS Plus (增强版) |
+| :--- | :---: | :---: |
+| **仿宋排版与自适应双栏** | ✅ | ✅ |
+| **独立博客与探索订阅** | ✅ | ✅ |
+| **AI 摘要与版本切换** | ✅ | ✅ |
+| **微信公众号双轨订阅** | ❌ (未支持) | ✅ **支持（微信读书授权 + 弹窗直搜扫码）** |
+| **单篇微信长文即时剪藏** | ❌ | ✅ **支持（无头抓取 + 自动频道归档）** |
+| **字数限制与截断警告** | ⚠️ 100,000 字符强制截断 | ✅ **彻底解除限制，万字全文畅读** |
+| **微信防盗链图片本地固化** | ⚠️ 依赖原链接（易裂开/404） | ✅ **异步固化至 Vault 本地，断网可读** |
+| **微信长短链接去重裁决** | ❌ (易跨频道重复显示) | ✅ **标题归一化对齐 + 专属频道优先** |
+| **Notion 风格细线大纲 (TOC)** | ❌ | ✅ **悬浮细线小地图 + 墨绿动态追踪** |
+| **正文多色高亮划线** | ❌ (仅支持记到日记) | ✅ **多色荧光高亮 + 下划线** |
+| **行间随读即时批注** | ❌ | ✅ **正文行间常驻批注** |
+| **自然时间线分组** | ❌ | ✅ **今天/昨天/本周/更早 智能折叠** |
+| **知识闭环导出 (PKM)** | 基础日记追加 | ✅ **高亮+批注+元数据全量卡片导出与回跳** |
 
-### 添加自己的订阅
+---
 
-1. 点击列表顶部 **+**，或运行命令 **Qiaomu AI RSS: 管理我的订阅**。
-2. 粘贴完整的 RSS / Atom 订阅地址，填写可选分组，点击“添加”。名称和文章会从订阅源读取。
-3. 从探索页添加的订阅会直接成为阅读器当前频道。也可以点击列表顶部的频道名称，在搜索弹窗中选择“我的订阅”、某个分组或具体订阅源；“乔木精选”仍可随时切回。
-4. 订阅管理中的铅笔按钮可修改名称与分组；垃圾桶可取消订阅，已收藏文章和今日日记中的链接会保留。
+## 🛠️ 安装与配置指南
 
-个人源默认且仅提供原文，复用收藏、已读、搜索、本地图片与今日日记功能，不会调用乔木 AI 接口。部分源只提供摘要，可从文章菜单打开原文。
+### 方式一：手动安装（推荐）
+1. 前往 [Releases](https://github.com/yww520/qiaomu-ai-rss/releases) 页面下载最新的 `main.js`、`manifest.json`、`styles.css`。
+2. 打开你的 Obsidian 库配置目录（默认为 `.obsidian/`），在 `plugins/` 下新建文件夹 `qiaomu-ai-rss`。
+3. 将下载的三个文件放入 `.obsidian/plugins/qiaomu-ai-rss/`。
+4. 打开 Obsidian 设置 → **第三方插件**，重新加载并启用 **Qiaomu RSS Plus (乔木 RSS 增强版)**。
 
-**OPML**：在订阅管理中选择“导入 OPML”，选择文件或粘贴内容，确认预览后导入；重复地址自动跳过，不覆盖已有名称和分组。嵌套分组合并成路径名称。导入后点击刷新获取文章。“导出 OPML”将当前个人订阅写入设置中的 OPML 导出文件夹，文件名为 `subscriptions-时间戳.opml`。
+### 方式二：BRAT 安装
+1. 在 Obsidian 中安装社区插件 **BRAT**。
+2. 在 BRAT 设置中添加 GitHub 仓库：`yww520/qiaomu-ai-rss`。
+3. 点击添加后自动完成安装并启用。
 
-最多 100 个个人源，每源保留订阅文件前 200 条中的最多 50 篇（总正文约 1 MB）；单篇超过 100,000 字符会截断并提示打开原文。刷新使用稳定文章 ID，保留已读与收藏；失败时保留旧文章。选择个人频道时，超过 5 分钟的缓存会刷新；刷新按钮强制获取。无定时后台轮询。
+---
 
-### 阅读与保存
+## ⚙️ 微信公众号服务配置 (`we-mp-rss`)
 
-![正文阅读设置](docs/images/listing-2026-09/typography.png)
+增强版使用轻量、安全、去中心化的开源后台 `we-mp-rss` 提供微信读书授权与公众号解析：
+1. 准备一台轻量云服务器或局域网 NAS（推荐运行 Docker）；
+2. 部署 `we-mp-rss` 镜像；
+3. 打开 Obsidian 设置 → **Qiaomu RSS Plus** → **微信公众号 (We-MP-RSS)**：
+   - **云端服务地址**：填写你的服务访问地址（如 `http://127.0.0.1:8001` 或 `http://your-server-ip:8001`）；
+   - **访问 Token / API Key**：如果服务开启了鉴权，在此填入 Token 即可；
+4. 点击插件列表顶部 **+ → 微信公众号订阅**，扫码完成微信读书授权，即可开始享受无痛的公众号订阅之旅！
 
-点击列表顶部的当前频道，按聚合、分组、乔木频道和个人订阅源浏览或搜索。正文顶部的版本菜单切换原文、中文翻译和乔木改写；点击字体图标可调整正文字体、字号、行距与版心宽度，所见即所得并自动保存，点击面板外部关闭。拖动两栏之间的分隔线调整列表宽度，双击复位；按 `[` 或点击侧栏图标专注阅读，按 `j` / `k` 切换文章。点击笔记图标后，插件会遵循 Obsidian 核心“日记”插件的文件夹、日期格式和模板设置，以普通段落追加文章标题的内部回跳链接 并分屏打开该文件。
+> 🔒 **隐私与安全说明**：
+> - 所有服务地址、Token 及授权凭证均保存在你本地 Vault 的 `data.json` 中，绝不会上传至任何第三方服务器；
+> - 所有文章数据、图片附件、划线与批注均存储在你的本地硬盘中，真正做到数据自主。
 
-搜索只覆盖当前加载列表（收藏模式下为本地收藏）；要读更多历史文章，请选择具体频道，再点击“加载更早文章”。全文与各版本取决于服务实际提供的内容，部分订阅只含摘要。
+---
 
-本地收藏、已读和缓存存储于当前库的插件数据中，不与网站账户或 iOS 收藏自动同步。离线时可以使用已缓存的最近列表和正文；新频道与未缓存正文仍需联网。AI 内容可能有误，建议对照原文。
+## 🗺️ 未来路线图 (Roadmap)
 
-## 隐私与网络 / Privacy and network use
+- [x] 微信公众号双轨订阅与单篇剪藏
+- [x] 突破万字字符截断与防盗链本地图床
+- [x] Notion 风格细线大纲小地图与自然时间线
+- [x] 行间高亮划线与即时批注
+- [x] 「读-记-存-用」卡片笔记与日记联动
+- [ ] **从「内容消费」迈向「内容创作」**：打通素材库到原创写作的通道，由 AI 辅助将碎片批注、金句灵感与研报素材一键串联为选题大纲或文章草稿；
+- [ ] **本地无头浏览器抓取方案探索**：进一步降低对外部云服务器的依赖；
+- [ ] **全文检索与混合向量检索集成**：在本地海量历史文章与批注中实现秒级语义反查。
 
-- **Discovery is local.** Catalog search/filtering sends no network requests. Clicking Subscribe fetches the chosen feed.
+---
 
-- **Network required for new content.** Opening the reader, selecting a channel/article or refreshing sends anonymous HTTPS GET requests to `https://rss.qiaomu.ai`, or the compatible HTTPS origin you explicitly configure. The service receives normal request metadata such as IP address, request time and requested article/channel IDs. See [Privacy](docs/PRIVACY.md).
-- **Personal feed requests go directly to the URLs you add or import.** These HTTP(S) hosts receive normal request metadata; feed addresses, groups and article bodies are not uploaded to Qiaomu. OPML import itself does not fetch content. Feed URLs may contain private access tokens and are stored unencrypted in plugin data and OPML exports; keep those exports private.
-- **No account, API key or payment is required for the public reading features in this release.** This plugin only reads existing published AI assets. It does not request new AI generation or send data to model providers. Future service availability is controlled by the service operator.
-- **Article images are enabled by default.** The plugin downloads article images and list thumbnails from their hosts and displays local Blob URLs. Images are cached within this plugin’s vault configuration directory (up to 64 MB / 100 files, 8 MB per image). Image hosts receive normal image requests; cached images can be read offline. You can disable images in settings. Clicking article links opens the linked website in your browser.
-- **No client-side analytics, ads, remote executable code, automatic updates or installation of dependencies.** The plugin does not upload vault notes or send local search queries, favorites or read markers to the service. There is no plugin-specific analytics endpoint. The service may retain ordinary HTTP access/error logs; this plugin does not load the website's analytics scripts.
-- **Vault-local storage only.** Settings, personal subscriptions with cached entries, recent Qiaomu entries, up to 40 recently opened articles, favorites, local images and up to 5,000 read IDs are saved using Obsidian plugin storage. Captured article snapshots are retained for internal return links even after cache eviction; deleting plugin data breaks those links. Favorites remain until removed; large libraries can increase the size of `data.json`. If you sync your vault's configuration, your sync provider may also sync these files. The note action appends the article title with an internal reader link and optionally selected text to today's Daily Note in the vault. No files outside the vault are read or written.
-- Switching service origins clears the previous Qiaomu service's local reader data and favorites; personal subscriptions and personal favorites remain. Back up your plugin data before switching.
+## 📜 开源协议与致敬
 
-## 开发
-
-```sh
-npm ci
-npm run check
-npm run test:live  # read-only requests to the production public API
-# In the disposable Qiaomu RSS QA vault only:
-node scripts/subscription-smoke.mjs
-node scripts/discovery-smoke.mjs
-node scripts/discovery-layout.mjs
-```
-
-`npm run dev` 监听 TypeScript 变化。构建产物为根目录 `main.js`，将其与 `manifest.json`、`styles.css` 安装到专用测试库即可。
-
-运行时仅使用 Obsidian 和 Web API，不依赖 Node.js 或 Electron。`isDesktopOnly: false` 表示代码兼容移动环境；移动真机测试状态见 [验收记录](docs/VALIDATION.md)。
-
-- [API 契约](docs/API.md)
-- [官方目录发布记录](docs/SUBMISSION.md)
-- [贡献与版本迭代](CONTRIBUTING.md)
-
-## License / 许可证
-
-Copyright (c) 2026 向阳乔木.
-
-本项目整体采用 **GNU GPL v3.0 only**（`GPL-3.0-only`），完整条款见 [LICENSE](LICENSE)。除另有明确声明的第三方部分外，自有代码可按 GPL v3.0 使用、修改和分发，不提供任何担保。第三方代码、字体及素材保留各自许可证与版权声明。
-
-GPL 允许免费商业使用；分发时须遵守相应源码、版权和许可证义务。需要 GPL 之外的授权，可联系作者协商[商业授权](COMMERCIAL-LICENSE.md)。本次变更不撤销此前已授予的许可证。
-
-The project as a whole is licensed under GNU GPL version 3 only, with no warranty. Third-party components retain their own licenses. Commercial use is permitted under GPL; a separate commercial agreement may be negotiated for rights the author can grant. Previously granted licenses remain valid.
-
-此前 MIT 版本声明保留在 [LICENSES/previous-MIT.txt](LICENSES/previous-MIT.txt)。
-
-Bundled dependencies retain their licenses: DOMPurify (Apache-2.0 OR MPL-2.0), marked (MIT), and Zod (MIT). See [third-party notices](THIRD_PARTY_NOTICES.md).
-
-[X / 向阳乔木](https://x.com/vista8) · [GitHub](https://github.com/joeseesun)
-
-仅内置朱雀仿宋常用字集，离线可用，按选择加载；`main.js` 小于 5 MB。其他字体使用设备已安装字体。朱雀仿宋采用 SIL OFL 1.1 授权，见 [字体来源与授权](fonts/README.md)。
-
-### 库内文件夹来源
-
-点击列表顶部 + → 本地文件夹 → 添加文件夹或添加文件，使用 Obsidian 内置搜索选择。输入目录名进行模糊搜索，选择后立即进入该频道。可添加多个文件夹，移除来源不会删除文件。剪藏的 title 属性用作标题，source 或 url 属性用作原文地址；没有网页地址的本地文件提供源笔记链接。未配置文件夹时不扫描库内 Markdown，文件夹来源不调用乔木 API。
+- 本项目基于 **GNU General Public License v3.0** 开源。详见 [LICENSE](LICENSE)。
+- 衷心感谢原项目创作者 [@joeseesun（向阳乔木）](https://github.com/joeseesun) 的卓越工作，为中文 Obsidian 社区带来了如此优雅的阅读体验！
+- 原项目地址：[joeseesun/qiaomu-ai-rss](https://github.com/joeseesun/qiaomu-ai-rss)。
+- 内置朱雀仿宋字集遵循 SIL OFL 1.1 开源协议。

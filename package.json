@@ -1,7 +1,7 @@
 {
-  "name": "qiaomu-ai-rss",
+  "name": "qiaomu-rss-plus",
   "version": "0.18.2",
-  "description": "Read Qiaomu and personal RSS feeds, then add article links to your Daily Note.",
+  "description": "Qiaomu RSS Plus: WeChat dual-track subscription, unlimited length, local image vault, Notion-style outline, inline annotations & PKM closed loop for Obsidian.",
   "license": "GPL-3.0-only",
   "private": true,
   "scripts": {

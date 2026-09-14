@@ -517,8 +517,8 @@ class RssSettings extends PluginSettingTab {
         { name: '更新记录', render: setting => {
           const details = setting.descEl.createEl('details');
           details.createEl('summary', { text: '查看本次更新' });
-          details.createEl('p', { text: '修复设置 tab 菜单重复；空白阅读区新增场景提示与快捷键。保留离线朱雀仿宋、设备字体和频道阅读进度。' });
-          details.createEl('a', { text: '完整更新记录', href: 'https://github.com/joeseesun/qiaomu-ai-rss/releases', attr: { target: '_blank', rel: 'noopener noreferrer' } });
+          details.createEl('p', { text: 'Qiaomu RSS Plus 增强版：支持微信公众号双轨订阅、万字全文无截断、本地防盗链图床、Notion大纲与行间高亮批注。' });
+          details.createEl('a', { text: '增强版更新记录与说明', href: 'https://github.com/yww520/qiaomu-ai-rss#readme', attr: { target: '_blank', rel: 'noopener noreferrer' } });
         } },
       ] },
       { name: '本地数据', desc: '已读、收藏与缓存保存在当前库。浏览频道、切换文章或刷新时请求服务，不会上传你的笔记。' },
@@ -641,17 +641,16 @@ class RssSettings extends PluginSettingTab {
       '摘录': [excerpt, noteFolderSetting, noteHierarchySetting, notePatternSetting, definitions[7]],
       'AI 总结': [aiGroup],
       '关于': [definitions[6], ...[
-        ['建议与问题反馈', 'GitHub Issues', 'https://github.com/joeseesun/qiaomu-ai-rss/issues'],
-        ['使用说明', '打开说明', 'https://github.com/joeseesun/qiaomu-ai-rss#readme'],
-        ['向阳乔木', 'qiaomu.ai', 'https://qiaomu.ai/'],
-        ['乔木博客', 'blog.qiaomu.ai', 'https://blog.qiaomu.ai/'],
-        ['X', '@vista8', 'https://x.com/vista8'],
-        ['GitHub', '@joeseesun', 'https://github.com/joeseesun'],
+        ['增强版 GitHub 仓库', 'yww520/qiaomu-ai-rss', 'https://github.com/yww520/qiaomu-ai-rss'],
+        ['建议与问题反馈', 'GitHub Issues', 'https://github.com/yww520/qiaomu-ai-rss/issues'],
+        ['使用说明', '打开说明', 'https://github.com/yww520/qiaomu-ai-rss#readme'],
+        ['原作者向阳乔木', 'qiaomu.ai', 'https://qiaomu.ai/'],
+        ['原项目 GitHub', '@joeseesun', 'https://github.com/joeseesun/qiaomu-ai-rss'],
       ].map(([name, label, href]) => ({ name, render: (setting: import('obsidian').Setting) => {
         setting.controlEl.createEl('a', { text: label, href, attr: { target: '_blank', rel: 'noopener noreferrer' } });
-      } })), { name: '开源许可', desc: 'Copyright © 向阳乔木 · GPL-3.0-only。内置朱雀仿宋遵循 SIL OFL 1.1。' }],
+      } })), { name: '开源许可', desc: 'Copyright © 向阳乔木 / enhanced by YanG · GPL-3.0-only。内置朱雀仿宋遵循 SIL OFL 1.1。' }],
     };
-    return [{ name: 'Qiaomu AI RSS', searchable: false, render: setting => {
+    return [{ name: 'Qiaomu RSS Plus (乔木 RSS 增强版)', searchable: false, render: setting => {
       setting.settingEl.addClass('qrs-settings-header');
       // Obsidian reuses the setting row when definitions update.
       setting.settingEl.querySelectorAll('.qrs-settings-tabs').forEach(nav => nav.remove());

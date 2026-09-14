@@ -1,10 +1,10 @@
 {
   "id": "qiaomu-ai-rss",
-  "name": "Qiaomu AI RSS",
+  "name": "Qiaomu RSS Plus (乔木 RSS 增强版)",
   "version": "0.18.2",
   "minAppVersion": "1.13.0",
-  "description": "Read Qiaomu and personal RSS feeds, then add article links to your Daily Note.",
-  "author": "向阳乔木",
-  "authorUrl": "https://github.com/joeseesun",
+  "description": "微信公众号双轨订阅、无字数截断、本地防盗链图床、Notion大纲与行间高亮批注，打造「读-记-存-用」闭环的乔木 RSS 增强版。",
+  "author": "向阳乔木 / enhanced by YanG",
+  "authorUrl": "https://github.com/yww520/qiaomu-ai-rss",
   "isDesktopOnly": false
 }
