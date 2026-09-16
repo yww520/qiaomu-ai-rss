@@ -7,10 +7,16 @@ import { requestUrl } from 'obsidian';
  * 2. WeChat Picture/Text notes (小绿书 / page_type: 2, from text_page_info and picture_page_info_list)
  * 3. WeChat audio/podcast episodes (voice_in_appmsg)
  */
+export function cleanWeChatUrl(url: string): string {
+  if (!url || !url.includes('mp.weixin.qq.com/s/')) return url;
+  return url.replace(/mp\.weixin\.qq\.com\/s\/([^?#]+)/, (_, token) => {
+    return 'mp.weixin.qq.com/s/' + token.replace(/~/g, '_');
+  });
+}
+
 export async function fetchWeChatArticleDirect(url: string): Promise<string | null> {
   if (!url || !url.includes('mp.weixin.qq.com/s/')) return null;
-  // Ensure token uses '_' instead of '~'
-  const cleanUrl = url.replace(/(mp\.weixin\.qq\.com\/s\/[^?#]*?)~/g, '$1_');
+  const cleanUrl = cleanWeChatUrl(url);
 
   try {
     const res = await requestUrl({
@@ -44,7 +50,7 @@ export function parseWeChatHtml(html: string): string | null {
   }
 
   // 2. Picture page / Note (小绿书) with text_page_info
-  const textMatch = html.match(/text_page_info:\s*\{[\s\S]*?content:\s*'(.*?)'[\s\S]*?content_noencode:/);
+  const textMatch = html.match(/text_page_info:\s*\{[\s\S]*?content:\s*['"]([\s\S]*?)['"]\s*,/);
   if (textMatch) {
     const raw = textMatch[1];
     const clean = raw
@@ -59,7 +65,7 @@ export function parseWeChatHtml(html: string): string | null {
     const listMatch = html.match(/picture_page_info_list:\s*\[([\s\S]*?)\]/);
     let imgHtml = '';
     if (listMatch) {
-      const urls = [...listMatch[1].matchAll(/cdn_url:\s*'([^']+)'/g)].map(m => m[1]);
+      const urls = [...listMatch[1].matchAll(/cdn_url:\s*['"]([^'"]+)['"]/g)].map(m => m[1]);
       if (urls.length > 0) {
         imgHtml = urls.map(u => `<p><img src="${u}" referrerpolicy="no-referrer"></p>`).join('\n') + '\n';
       }
@@ -79,7 +85,8 @@ export function parseWeChatHtml(html: string): string | null {
 
   // 3. Audio / Podcast article
   if (html.includes('voice_in_appmsg')) {
-    return '<p><em>【本篇为微信原生音频/播客节目，暂无富文本正文，请在微信或浏览器中收听】</em></p>';
+    const audioTitle = (html.match(/class=["']audio_title["'][^>]*>([\s\S]*?)<\/span>/i) || [])[1] || '微信音频节目';
+    return `<div class="qrs-audio-notice"><p><strong>🎙️ 微信原生音频/播客节目</strong></p><p>本篇为包含原生音频的播客内容（${audioTitle.trim()}）。请点击下方按钮在浏览器中打开收听完整音频。</p></div>`;
   }
 
   return null;

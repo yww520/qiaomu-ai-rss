@@ -217,11 +217,7 @@ export function safeUrl(value: string, base?: string): string | null {
     let cleanVal = value;
     // Fix WeRead export bug where WeChat article short tokens have '_' converted to '~'
     if (cleanVal.includes('mp.weixin.qq.com/s/')) {
-      cleanVal = cleanVal.replace(/(mp\.weixin\.qq\.com\/s\/[A-Za-z0-9_-]*)~([A-Za-z0-9_~-]*)/g, '$1_$2');
-      // In case there are multiple tildes in the URL token
-      while (cleanVal.includes('mp.weixin.qq.com/s/') && cleanVal.includes('~')) {
-        cleanVal = cleanVal.replace(/(mp\.weixin\.qq\.com\/s\/[^?#]*?)~/g, '$1_');
-      }
+      cleanVal = cleanVal.replace(/mp\.weixin\.qq\.com\/s\/([^?#]+)/, (_, token) => 'mp.weixin.qq.com/s/' + token.replace(/~/g, '_'));
     }
     const url = new URL(cleanVal, base);
     return ['https:', 'http:'].includes(url.protocol) && !url.username && !url.password ? url.href : null;

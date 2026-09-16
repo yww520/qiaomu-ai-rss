@@ -998,14 +998,20 @@ export class ReaderView extends ItemView {
     if (entry.origin === 'local') {
       this.bundle = { entry, rewrite: null, translation: null, fetchedAt: Date.now() };
       this.plugin.remember(this.bundle); this.run(() => this.plugin.persist());
-      this.articleLoading = false; this.reader.setAttribute('aria-busy', 'false'); this.renderReader();
 
-      // If WeChat article is missing body content, auto-fetch full rich text in background
+      // If WeChat article is missing body content, auto-fetch full rich text with loading spinner
       const link = entry.link;
-      if (link && link.includes('mp.weixin.qq.com/s/') && (!entry.content || entry.content.includes('订阅源没有提供正文'))) {
+      const isMissingContent = !entry.content || entry.content.includes('订阅源没有提供正文');
+
+      if (link && link.includes('mp.weixin.qq.com/s/') && isMissingContent) {
+        this.articleLoading = true;
+        this.reader.setAttribute('aria-busy', 'true');
+        this.renderReader();
+
         void (async () => {
           const direct = await fetchWeChatArticleDirect(link);
-          if (direct && direct.length > 20 && !this.closed && this.articleVersion === version) {
+          if (this.closed || this.articleVersion !== version) return;
+          if (direct && direct.length > 20) {
             entry.content = direct;
             if (this.bundle) {
               this.bundle.entry.content = direct;
@@ -1017,10 +1023,15 @@ export class ReaderView extends ItemView {
               if (matched) matched.content = direct;
             }
             this.run(() => this.plugin.persist());
-            this.renderReader();
           }
+          this.articleLoading = false;
+          this.reader.setAttribute('aria-busy', 'false');
+          this.renderReader();
         })();
+        return;
       }
+
+      this.articleLoading = false; this.reader.setAttribute('aria-busy', 'false'); this.renderReader();
       return;
     }
     try {
