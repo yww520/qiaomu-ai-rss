@@ -67,6 +67,9 @@ export class Subscriptions {
     if (!name.trim()) throw new Error('订阅名称不能为空。');
     feed.name = name.trim().slice(0, 200); feed.group = group.trim().slice(0, 100); await this.persist();
   }
+  private cloudSyncQueue: Promise<unknown> = Promise.resolve();
+  private lastCloudSync = new Map<string, number>();
+
   async remove(id: string) {
     const state = this.state(); state.subscriptions = state.subscriptions.filter(feed => feed.id !== id);
     for (const [key, bundle] of Object.entries(state.cache)) if (bundle.entry.sourceId === id) delete state.cache[key];
@@ -75,35 +78,55 @@ export class Subscriptions {
   }
   async refresh(ids: string[], doc: Document, force = false, updated?: () => void): Promise<void> {
     const remaining = [...ids];
-    const isBatch = remaining.length > 1;
+    const isSingle = remaining.length === 1;
     const worker = async () => {
       while (remaining.length) {
         const id = remaining.shift();
         if (id) {
-          await this.refreshOne(id, doc, force, !isBatch);
+          await this.refreshOne(id, doc, force, isSingle);
           updated?.();
           if (remaining.length > 0) {
-            await new Promise(r => setTimeout(r, 200));
+            await new Promise(r => setTimeout(r, 100));
           }
         }
       }
     };
     await Promise.all(Array.from({ length: Math.min(2, remaining.length) }, worker));
   }
-  private refreshOne(id: string, doc: Document, force: boolean, allowCloudSync = true): Promise<void> {
+  private runCloudSync(mpId: string, name?: string): Promise<void> {
+    if (!this.wempUpdater) return Promise.resolve();
+    const task = async () => {
+      try {
+        await this.wempUpdater!(mpId, name);
+      } catch (err) {
+        console.warn('[Subscriptions] cloud sync error for', mpId, err);
+      }
+      // Small pause between remote scraper calls to prevent server concurrency locks & rate limits
+      await new Promise(r => setTimeout(r, 400));
+    };
+    const current = this.cloudSyncQueue.then(task, task);
+    this.cloudSyncQueue = current;
+    return current;
+  }
+  private refreshOne(id: string, doc: Document, force: boolean, isSingle = false): Promise<void> {
     const ongoing = this.pending.get(id); if (ongoing) return ongoing;
     const feed = this.state().subscriptions.find(item => item.id === id);
     const minInterval = feed?.url?.includes('FEATURED_ARTICLES') ? 15000 : 60000;
     if (!feed || (!force && Date.now() - feed.updatedAt < minInterval)) return Promise.resolve();
     const refresh = async () => {
       try {
+        const match = feed.url.match(/\/feed\/(?:MP_WXS_)?([0-9A-Za-z_-]+)\.xml/);
+        const isMpFeed = Boolean(match && match[1] !== 'FEATURED_ARTICLES');
         const isFeedEmpty = !feed.entries || feed.entries.length === 0;
-        if (force && (allowCloudSync || isFeedEmpty) && this.wempUpdater) {
-          const match = feed.url.match(/\/feed\/(?:MP_WXS_)?([0-9A-Za-z_-]+)\.xml/);
-          if (match) {
-            const mpId = match[1].startsWith('MP_WXS_') ? match[1] : `MP_WXS_${match[1]}`;
-            await this.wempUpdater(mpId, feed.name).catch(() => undefined);
-          }
+        const lastSync = this.lastCloudSync.get(feed.id) || 0;
+        const BATCH_COOLDOWN = 3 * 60 * 1000; // 3 minutes cooldown between cloud scrapes during batch refresh
+        const isCooldownExpired = Date.now() - lastSync > BATCH_COOLDOWN;
+
+        const shouldCloudSync = force && isMpFeed && Boolean(this.wempUpdater) && (isSingle || isFeedEmpty || isCooldownExpired);
+        if (shouldCloudSync && match) {
+          this.lastCloudSync.set(feed.id, Date.now());
+          const mpId = match[1].startsWith('MP_WXS_') ? match[1] : `MP_WXS_${match[1]}`;
+          await this.runCloudSync(mpId, feed.name);
         }
         const parsed = await this.fetch(feed.url, doc);
         if (!this.state().subscriptions.includes(feed)) return;

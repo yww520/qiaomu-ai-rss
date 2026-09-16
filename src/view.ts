@@ -678,6 +678,9 @@ export class ReaderView extends ItemView {
       if (this.vaultScope()) { this.entries = this.plugin.vaultSources.entries(this.source.slice(7)); this.hasMore = false; return; }
       if (this.personalScope()) {
         const feeds = this.selectedFeeds();
+        if (force && feeds.length > 1) {
+          this.status.setText('正在同步并刷新订阅源…');
+        }
         await this.plugin.subscriptions.refresh(feeds.map(feed => feed.id), this.reader.ownerDocument, force, () => {
           if (!this.closed && version === this.listVersion) { this.entries = this.localEntries(); this.renderList(); }
         });

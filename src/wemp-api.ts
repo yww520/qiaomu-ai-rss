@@ -361,8 +361,9 @@ export class WeMpClient {
           }),
           throw: false,
         });
-        if (wereadRes.status === 200 && (wereadRes.json?.data?.collected ?? 0) > 0) {
-          return { ok: true, message: `微信读书已成功采集 ${wereadRes.json.data.collected} 篇最新文章并生成 RSS！` };
+        if (wereadRes.status === 200 && wereadRes.json?.code === 0) {
+          const count = wereadRes.json?.data?.collected ?? 0;
+          return { ok: true, message: count > 0 ? `微信读书已成功采集 ${count} 篇最新文章并生成 RSS！` : '微信读书采集完成，当前暂无新增文章' };
         }
       } catch {
         // fallback to mps/update

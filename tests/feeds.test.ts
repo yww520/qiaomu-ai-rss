@@ -149,7 +149,7 @@ describe('local subscription lifecycle', () => {
     expect(wempUpdater).toHaveBeenCalledWith('MP_WXS_123456', 'Test MP');
     expect(transport).toHaveBeenCalledWith(feed.url);
   });
-  it('does not hammer wempUpdater for all feeds in batch refresh', async () => {
+  it('executes wempUpdater sequentially in batch refresh and respects cooldown', async () => {
     const state = initialState(null);
     const transport = vi.fn(async () => ({ status: 200, text: rss() }));
     const wempUpdater = vi.fn(async () => ({ ok: true, message: 'updated' }));
@@ -160,8 +160,15 @@ describe('local subscription lifecycle', () => {
     ]);
     state.subscriptions[0].entries = [{ id: '1', sourceId: 's1', origin: 'local', sourceName: 'MP 1', title: 'A', link: 'https://mp.weixin.qq.com/s/1' }];
     state.subscriptions[1].entries = [{ id: '2', sourceId: 's2', origin: 'local', sourceName: 'MP 2', title: 'B', link: 'https://mp.weixin.qq.com/s/2' }];
+    
+    // First batch refresh: should call wempUpdater sequentially for each feed
     await service.refresh(state.subscriptions.map(s => s.id), document, true);
-    expect(wempUpdater).not.toHaveBeenCalled();
+    expect(wempUpdater).toHaveBeenCalledTimes(2);
     expect(transport).toHaveBeenCalledTimes(2);
+
+    // Immediate second batch refresh: cooldown active, so wempUpdater should be skipped
+    await service.refresh(state.subscriptions.map(s => s.id), document, true);
+    expect(wempUpdater).toHaveBeenCalledTimes(2); // still 2, not 4
+    expect(transport).toHaveBeenCalledTimes(4);
   });
 });
