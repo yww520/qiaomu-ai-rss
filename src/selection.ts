@@ -28,9 +28,18 @@ export class SelectionCapture {
     doc.addEventListener('keydown', this.escape);
   }
   clear = () => { this.doc.defaultView?.clearTimeout(this.selectionTimer); this.popup?.remove(); this.popup = undefined; };
+  private isSelectable(node: Node | null): boolean {
+    if (!node) return false;
+    const el = node instanceof Element ? node : node.parentElement;
+    if (!el) return false;
+    const article = this.reader().querySelector('.qrs-article');
+    if (!article || !article.contains(el)) return false;
+    if (el.closest('.qrs-selection-popup, .qrs-ai-card-actions, .qrs-ai-prompt-bar, .qrs-missing-content-actions, button, input, textarea')) return false;
+    return true;
+  }
   private dragStart = (event: DragEvent) => {
-    const selection = this.doc.getSelection(), prose = this.reader().querySelector('.qrs-prose');
-    if (!event.dataTransfer || !selection || selection.isCollapsed || !prose?.contains(selection.anchorNode) || !prose.contains(selection.focusNode) || !prose.contains(event.target as Node)) return;
+    const selection = this.doc.getSelection();
+    if (!event.dataTransfer || !selection || selection.isCollapsed || !this.isSelectable(selection.anchorNode) || !this.isSelectable(selection.focusNode) || !this.isSelectable(event.target as Node)) return;
     this.writeDrag(event, selection.toString());
   };
   private writeDrag(event: DragEvent, text: string) {
@@ -51,8 +60,7 @@ export class SelectionCapture {
     if (event.type === 'keyup' && (event as KeyboardEvent).key === 'Escape') return;
     this.clear();
     const selection = this.doc.getSelection();
-    const prose = this.reader().querySelector('.qrs-prose');
-    if (!selection?.rangeCount || selection.isCollapsed || !prose?.contains(selection.anchorNode) || !prose.contains(selection.focusNode)) return;
+    if (!selection?.rangeCount || selection.isCollapsed || !this.isSelectable(selection.anchorNode) || !this.isSelectable(selection.focusNode)) return;
     const text = selection.toString().trim(); const save = this.capture();
     if (!text || !save) return;
     const range = selection.getRangeAt(0);

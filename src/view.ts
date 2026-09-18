@@ -365,8 +365,10 @@ export class ReaderView extends ItemView {
       event.preventDefault();
       const bundle = this.bundle, mode = this.mode, note = this.plugin.currentNote();
       const selection = this.contentEl.ownerDocument.getSelection();
-      const prose = target.closest('.qrs-article')?.querySelector('.qrs-prose');
-      const excerpt = selection && prose?.contains(selection.anchorNode) && prose.contains(selection.focusNode) ? selection.toString().trim() : '';
+      const article = target.closest('.qrs-article');
+      const isSelectable = selection && article && !selection.isCollapsed &&
+        article.contains(selection.anchorNode) && article.contains(selection.focusNode);
+      const excerpt = isSelectable ? selection.toString().trim() : '';
       const append = async (current: boolean) => {
         try {
           this.plugin.remember(bundle);
@@ -1626,7 +1628,9 @@ export class ReaderView extends ItemView {
           };
 
           const bubble = botRow.createDiv('qrs-ai-msg-bubble qrs-ai-markdown-body');
-          void MarkdownRenderer.render(this.app, msg.content, bubble, '', this);
+          void MarkdownRenderer.render(this.app, msg.content, bubble, '', this).then(() => {
+            this.setupHighlightsInProse(bubble);
+          });
         }
       }
     }
@@ -1771,7 +1775,9 @@ export class ReaderView extends ItemView {
 
       if (!this.summaryCollapsed) {
         const body = card.createDiv('qrs-ai-card-body');
-        void MarkdownRenderer.render(this.app, bundle.entry.aiSummary!, body, '', this);
+        void MarkdownRenderer.render(this.app, bundle.entry.aiSummary!, body, '', this).then(() => {
+          this.setupHighlightsInProse(body);
+        });
         this.renderAiFollowUpSection(card, bundle);
       }
       return;

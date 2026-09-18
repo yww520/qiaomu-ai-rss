@@ -298,69 +298,69 @@
 .qrs-color-dot-red { background-color: #f87171; }
 .qrs-color-dot-orange { background-color: #fb923c; }
 
-/* Highlights in prose */
-.qrs-prose mark.qrs-hl {
+/* Highlights in prose and AI cards */
+:is(.qrs-prose, .qrs-ai-summary-card) mark.qrs-hl {
   cursor: pointer;
   border-radius: 2px;
   transition: filter 0.15s, background-color 0.15s;
   padding: 1px 2px;
 }
-.qrs-prose mark.qrs-hl:hover {
+:is(.qrs-prose, .qrs-ai-summary-card) mark.qrs-hl:hover {
   filter: brightness(0.92);
 }
 
 /* Multi-color highlights */
-.qrs-prose mark.qrs-hl-highlight,
-.qrs-prose mark.qrs-hl-color-yellow {
+:is(.qrs-prose, .qrs-ai-summary-card) mark.qrs-hl-highlight,
+:is(.qrs-prose, .qrs-ai-summary-card) mark.qrs-hl-color-yellow {
   background-color: rgba(254, 240, 138, 0.7);
   color: inherit;
 }
-.theme-dark .qrs-prose mark.qrs-hl-highlight,
-.theme-dark .qrs-prose mark.qrs-hl-color-yellow {
+.theme-dark :is(.qrs-prose, .qrs-ai-summary-card) mark.qrs-hl-highlight,
+.theme-dark :is(.qrs-prose, .qrs-ai-summary-card) mark.qrs-hl-color-yellow {
   background-color: rgba(234, 179, 8, 0.38);
 }
 
-.qrs-prose mark.qrs-hl-color-green {
+:is(.qrs-prose, .qrs-ai-summary-card) mark.qrs-hl-color-green {
   background-color: rgba(187, 247, 208, 0.75);
   color: inherit;
 }
-.theme-dark .qrs-prose mark.qrs-hl-color-green {
+.theme-dark :is(.qrs-prose, .qrs-ai-summary-card) mark.qrs-hl-color-green {
   background-color: rgba(34, 197, 94, 0.35);
 }
 
-.qrs-prose mark.qrs-hl-color-blue {
+:is(.qrs-prose, .qrs-ai-summary-card) mark.qrs-hl-color-blue {
   background-color: rgba(191, 219, 254, 0.75);
   color: inherit;
 }
-.theme-dark .qrs-prose mark.qrs-hl-color-blue {
+.theme-dark :is(.qrs-prose, .qrs-ai-summary-card) mark.qrs-hl-color-blue {
   background-color: rgba(59, 130, 246, 0.35);
 }
 
-.qrs-prose mark.qrs-hl-color-purple {
+:is(.qrs-prose, .qrs-ai-summary-card) mark.qrs-hl-color-purple {
   background-color: rgba(233, 213, 255, 0.75);
   color: inherit;
 }
-.theme-dark .qrs-prose mark.qrs-hl-color-purple {
+.theme-dark :is(.qrs-prose, .qrs-ai-summary-card) mark.qrs-hl-color-purple {
   background-color: rgba(168, 85, 247, 0.35);
 }
 
-.qrs-prose mark.qrs-hl-color-red {
+:is(.qrs-prose, .qrs-ai-summary-card) mark.qrs-hl-color-red {
   background-color: rgba(254, 202, 202, 0.75);
   color: inherit;
 }
-.theme-dark .qrs-prose mark.qrs-hl-color-red {
+.theme-dark :is(.qrs-prose, .qrs-ai-summary-card) mark.qrs-hl-color-red {
   background-color: rgba(239, 68, 68, 0.35);
 }
 
-.qrs-prose mark.qrs-hl-color-orange {
+:is(.qrs-prose, .qrs-ai-summary-card) mark.qrs-hl-color-orange {
   background-color: rgba(254, 215, 170, 0.75);
   color: inherit;
 }
-.theme-dark .qrs-prose mark.qrs-hl-color-orange {
+.theme-dark :is(.qrs-prose, .qrs-ai-summary-card) mark.qrs-hl-color-orange {
   background-color: rgba(249, 115, 22, 0.35);
 }
 
-.qrs-prose mark.qrs-hl-underline {
+:is(.qrs-prose, .qrs-ai-summary-card) mark.qrs-hl-underline {
   background-color: transparent !important;
   text-decoration: underline;
   text-decoration-color: #ef4444;
@@ -368,18 +368,18 @@
   text-underline-offset: 4px;
   color: inherit;
 }
-.qrs-prose mark.qrs-hl-underline.qrs-hl-color-blue { text-decoration-color: #3b82f6; }
-.qrs-prose mark.qrs-hl-underline.qrs-hl-color-green { text-decoration-color: #10b981; }
-.qrs-prose mark.qrs-hl-underline.qrs-hl-color-yellow { text-decoration-color: #eab308; }
-.qrs-prose mark.qrs-hl-underline.qrs-hl-color-purple { text-decoration-color: #a855f7; }
-.qrs-prose mark.qrs-hl-underline.qrs-hl-color-orange { text-decoration-color: #f97316; }
+:is(.qrs-prose, .qrs-ai-summary-card) mark.qrs-hl-underline.qrs-hl-color-blue { text-decoration-color: #3b82f6; }
+:is(.qrs-prose, .qrs-ai-summary-card) mark.qrs-hl-underline.qrs-hl-color-green { text-decoration-color: #10b981; }
+:is(.qrs-prose, .qrs-ai-summary-card) mark.qrs-hl-underline.qrs-hl-color-yellow { text-decoration-color: #eab308; }
+:is(.qrs-prose, .qrs-ai-summary-card) mark.qrs-hl-underline.qrs-hl-color-purple { text-decoration-color: #a855f7; }
+:is(.qrs-prose, .qrs-ai-summary-card) mark.qrs-hl-underline.qrs-hl-color-orange { text-decoration-color: #f97316; }
 
-.qrs-prose mark.qrs-hl-bold {
+:is(.qrs-prose, .qrs-ai-summary-card) mark.qrs-hl-bold {
   background-color: transparent !important;
   font-weight: 700;
   color: inherit;
 }
-.qrs-prose mark.qrs-hl-has-note::after {
+:is(.qrs-prose, .qrs-ai-summary-card) mark.qrs-hl-has-note::after {
   content: " 💭";
   font-size: 11px;
   vertical-align: super;
@@ -850,6 +850,20 @@
 .qrs-ai-card-btn:hover {
   color: var(--text-normal);
   background: var(--background-modifier-hover);
+}
+
+.qrs-ai-summary-card,
+.qrs-ai-card-body,
+.qrs-ai-msg-bubble,
+.qrs-ai-card-body :is(p, span, div, a, li, blockquote, h1, h2, h3, h4, h5, h6, strong, em, code, section, article),
+.qrs-ai-msg-bubble :is(p, span, div, a, li, blockquote, h1, h2, h3, h4, h5, h6, strong, em, code, section, article) {
+  -webkit-user-select: text !important;
+  user-select: text !important;
+}
+
+.qrs-ai-card-body ::selection,
+.qrs-ai-msg-bubble ::selection {
+  background: var(--text-selection);
 }
 
 .qrs-ai-card-body {
