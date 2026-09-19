@@ -145,6 +145,15 @@ export default class QiaomuRssPlugin extends Plugin {
     registerLinks(document);
     this.registerEvent(this.app.workspace.on('window-open', (_window, win) => registerLinks(win.document)));
     this.registerObsidianProtocolHandler('qiaomu-ai-rss', params => {
+      if (params.action === 'update-bookshelf') {
+        void this.syncAllNotesAndBookshelf().then(() => {
+          const file = this.app.vault.getAbstractFileByPath('Qiaomu RSS 读书架.md');
+          if (file instanceof TFile) {
+            void this.app.workspace.getLeaf(false).openFile(file);
+          }
+        });
+        return;
+      }
       if (params.view === 'reading-hub') {
         void this.openReadingHub(params.source || 'reading-hub:today');
         return;
@@ -431,12 +440,15 @@ ${coverUrl ? `> - ![${title}|200](${coverUrl})\n` : ''}> - **文章标题**： $
     }
 
     let existing = this.app.vault.getAbstractFileByPath(fullPath);
+    let resultFile: TFile;
     if (existing instanceof TFile) {
       await this.app.vault.modify(existing, md);
-      return existing;
+      resultFile = existing;
     } else {
-      return await this.app.vault.create(fullPath, md);
+      resultFile = await this.app.vault.create(fullPath, md);
     }
+    void this.updateBookshelfIndexFile();
+    return resultFile;
   }
 
   async syncAllNotesAndBookshelf(): Promise<void> {
@@ -556,6 +568,12 @@ tags:
 
 > [!note] 欢迎来到你的个人知识沉淀书架！
 > 这里集中汇聚了你在 **乔木 AI RSS（Qiaomu RSS）** 中研读的所有优质深度文章、高亮精句与思考批注。所有笔记均对齐 **微信读书架（WeRead）** 属性结构与元数据卡片标准，无缝支持 Obsidian 属性面板、实时预览（Live Preview）、全局搜索、以及 Dataview / Bases 视图检索。
+
+> [!tip] 🔄 读书架如何更新与同步
+> 1. **一键点击更新**：[👉 点击此处立即同步全库划线并刷新本页面](obsidian://qiaomu-ai-rss?vault=${encodeURIComponent(this.app.vault.getName())}&action=update-bookshelf)
+> 2. **快捷键命令**：按下 \`Cmd + P\`（Mac）或 \`Ctrl + P\`（Windows），搜索并执行 **\`Qiaomu RSS: 更新乔木 RSS 读书架与读书笔记\`**。
+> 3. **阅读器顶部菜单**：在乔木阅读器顶部工具栏点击 🖊️ **高亮笔图标**，选择「🔄 同步所有划线并更新读书架」。
+> 4. **单篇自动刷新**：在阅读器中任意文章点击「导出笔记」或划线保存时，读书架都会自动在后台增量刷新。
 
 ---
 

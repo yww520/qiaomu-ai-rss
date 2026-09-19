@@ -1335,6 +1335,30 @@ export class ReaderView extends ItemView {
             .setDisabled(true);
         });
       }
+      menu.addSeparator();
+      menu.addItem(item => {
+        item.setTitle('🔄 同步所有划线并更新读书架')
+          .setIcon('refresh-cw')
+          .onClick(async () => {
+            await this.plugin.syncAllNotesAndBookshelf();
+          });
+      });
+      menu.addItem(item => {
+        item.setTitle('📚 打开 Qiaomu RSS 读书架')
+          .setIcon('book-open')
+          .onClick(async () => {
+            const bookshelfFile = this.app.vault.getAbstractFileByPath('Qiaomu RSS 读书架.md');
+            if (bookshelfFile instanceof TFile) {
+              await this.app.workspace.getLeaf(false).openFile(bookshelfFile);
+            } else {
+              await this.plugin.updateBookshelfIndexFile();
+              const newFile = this.app.vault.getAbstractFileByPath('Qiaomu RSS 读书架.md');
+              if (newFile instanceof TFile) {
+                await this.app.workspace.getLeaf(false).openFile(newFile);
+              }
+            }
+          });
+      });
       const rect = notesBtn.getBoundingClientRect();
       menu.showAtPosition({ x: rect.left, y: rect.bottom });
     };
