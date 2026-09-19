@@ -12,6 +12,8 @@ export interface ReadingHubViewDef {
 
 export const READING_HUB_VIEWS: ReadingHubViewDef[] = [
   { id: 'reading-hub:today', name: '🎯 今日看什么', icon: 'sparkles', subtitle: '近 3 天新入库材料' },
+  { id: 'reading-hub:weread', name: '📚 微信读书架', icon: 'book', subtitle: '微信读书划线与深度笔记' },
+  { id: 'reading-hub:notes', name: '📑 读书笔记库', icon: 'file-text', subtitle: '全量划线与批注笔记' },
   { id: 'reading-hub:inbox', name: '📥 Inbox 待处理', icon: 'inbox', subtitle: '待初筛材料池' },
   { id: 'reading-hub:research', name: '🔬 研究报告', icon: 'flask-conical', subtitle: '深度研究与纪要' },
   { id: 'reading-hub:screen', name: '🔍 筛选发现', icon: 'search', subtitle: '快速筛选结论' },
@@ -30,7 +32,10 @@ export class ReadingHubSource {
     return !!(
       this.app.vault.getAbstractFileByPath('reading-hub.base') ||
       this.app.vault.getAbstractFileByPath('reading-hub.md') ||
-      this.app.vault.getAbstractFileByPath('ai-workspace-hub')
+      this.app.vault.getAbstractFileByPath('ai-workspace-hub') ||
+      this.app.vault.getAbstractFileByPath('weread') ||
+      this.app.vault.getAbstractFileByPath('WeRead') ||
+      this.app.vault.getAbstractFileByPath('Qiaomu RSS')
     );
   }
 
@@ -47,6 +52,9 @@ export class ReadingHubSource {
       'ai-workspace-hub/wiki/sources',
       'inbox',
       'wiki/sources',
+      'weread',
+      'WeRead',
+      'Qiaomu RSS/notes',
     ];
   }
 
@@ -58,6 +66,8 @@ export class ReadingHubSource {
     if (path.includes('/podcast-picks')) return '🎯 选品';
     if (path.includes('/daily-watch') || path.includes('/ai-signal') || path.includes('/monitoring')) return '📊 日报';
     if (path.includes('/wiki/sources')) return '📚 Sources';
+    if (path.includes('/weread') || path.includes('/WeRead')) return '📚 微信读书';
+    if (path.includes('/Qiaomu RSS/notes') || path.includes('/notes/')) return '📑 读书笔记';
     return '📄 笔记';
   }
 
@@ -69,14 +79,33 @@ export class ReadingHubSource {
       val => typeof val === 'string' && safeUrl(val)
     ) as string | undefined;
 
-    const readStatus = typeof frontmatter?.read_status === 'string' ? frontmatter.read_status : '未读';
+    let readStatus = typeof frontmatter?.read_status === 'string' ? frontmatter.read_status : '';
+    if (!readStatus) {
+      if (frontmatter?.readingStatus === '4' || frontmatter?.progress === '100%') {
+        readStatus = '已读';
+      } else if (frontmatter?.readingStatus || frontmatter?.progress) {
+        readStatus = '在读';
+      } else {
+        readStatus = '未读';
+      }
+    }
+
     const category = this.inferCategory(file.path);
 
     let publishedTs = file.stat.ctime;
-    if (frontmatter?.date && typeof frontmatter.date === 'string') {
-      const parsed = Date.parse(frontmatter.date);
+    const rawDate = frontmatter?.lastReadDate || frontmatter?.readingDate || frontmatter?.date;
+    if (rawDate && typeof rawDate === 'string') {
+      const parsed = Date.parse(rawDate);
       if (!isNaN(parsed)) publishedTs = parsed;
     }
+
+    const author = typeof frontmatter?.author === 'string'
+      ? frontmatter.author
+      : (typeof frontmatter?.channel === 'string' ? frontmatter.channel : undefined);
+
+    const image = typeof frontmatter?.cover === 'string' && safeUrl(frontmatter.cover)
+      ? frontmatter.cover
+      : undefined;
 
     return {
       id: 'vault:' + file.path,
@@ -89,7 +118,8 @@ export class ReadingHubSource {
       publishedTs,
       readStatus,
       category,
-      author: typeof frontmatter?.channel === 'string' ? frontmatter.channel : undefined,
+      author,
+      image,
     };
   }
 
@@ -117,6 +147,32 @@ export class ReadingHubSource {
           const unread = entry.readStatus !== '已读' && entry.readStatus !== '跳过';
           return isRecent && unread;
         }).sort((a, b) => b.stat.ctime - a.stat.ctime);
+        break;
+
+      case 'reading-hub:weread':
+        filtered = allFiles.filter(f => {
+          const inWeread = f.path.startsWith('weread/') || f.path.startsWith('WeRead/') || f.path.includes('/weread/') || f.path.includes('/WeRead/');
+          return (
+            inWeread &&
+            !f.basename.includes('读书架') &&
+            !f.basename.startsWith('🎓') &&
+            !f.basename.startsWith('🎨') &&
+            !f.basename.startsWith('🏛') &&
+            !f.basename.startsWith('💰') &&
+            !f.basename.startsWith('📖') &&
+            !f.basename.startsWith('📚') &&
+            !f.basename.startsWith('📜') &&
+            !f.basename.startsWith('🔬') &&
+            !f.basename.startsWith('🧠') &&
+            f.basename !== '索引'
+          );
+        }).sort((a, b) => b.stat.mtime - a.stat.mtime);
+        break;
+
+      case 'reading-hub:notes':
+        filtered = allFiles.filter(f => {
+          return (f.path.includes('Qiaomu RSS/notes') || f.path.includes('/notes/')) && !f.basename.includes('读书架');
+        }).sort((a, b) => b.stat.mtime - a.stat.mtime);
         break;
 
       case 'reading-hub:inbox':

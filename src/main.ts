@@ -467,7 +467,137 @@ ${coverUrl ? `> - ![${title}|200](${coverUrl})\n` : ''}> - **文章标题**： $
         count++;
       }
     }
-    new Notice(`已更新 ${count} 篇读书笔记到本地目录！`);
+    if (count > 0) {
+      await this.updateBookshelfIndexFile();
+    }
+    new Notice(`已更新 ${count} 篇读书笔记并同步读书架！`);
+  }
+
+  async updateBookshelfIndexFile(): Promise<void> {
+    const noteFolder = folderPath(this.state.settings.noteFolder);
+    const files = this.app.vault.getMarkdownFiles().filter(f => {
+      return (f.path.startsWith(noteFolder + '/') || f.path === noteFolder) && !f.name.includes('读书架');
+    });
+
+    if (files.length === 0) return;
+
+    interface NoteMeta {
+      file: TFile;
+      title: string;
+      source: string;
+      author: string;
+      cover: string;
+      noteCount: number;
+      readingDate: string;
+      hasSummary: boolean;
+      readerUrl: string;
+      link: string;
+    }
+
+    const notes: NoteMeta[] = [];
+    let totalHighlights = 0;
+    let totalSummaries = 0;
+    const sourcesSet = new Set<string>();
+
+    for (const f of files) {
+      const cache = this.app.metadataCache.getFileCache(f);
+      const fm = cache?.frontmatter;
+      const title = (fm?.title as string) || f.basename;
+      const source = (fm?.source as string) || '精选文章';
+      const author = (fm?.author as string) || source;
+      const cover = (fm?.cover as string) || '';
+      const noteCount = typeof fm?.noteCount === 'number' ? fm.noteCount : 0;
+      const readingDate = (fm?.readingDate as string) || (f.stat.ctime ? new Date(f.stat.ctime).toISOString().slice(0, 10) : '--');
+      const link = (fm?.link as string) || '';
+      const articleId = (fm?.articleId as string) || '';
+
+      const content = await this.app.vault.cachedRead(f);
+      const hasSummary = content.includes('# AI 深度洞察与总结');
+      if (hasSummary) totalSummaries++;
+      totalHighlights += noteCount;
+      sourcesSet.add(source);
+
+      const vaultName = this.app.vault.getName();
+      const readerUrl = `obsidian://qiaomu-ai-rss?vault=${encodeURIComponent(vaultName)}&article=${encodeURIComponent(articleId.startsWith('local-') ? 'local|' + articleId : articleId)}&mode=original`;
+
+      notes.push({
+        file: f,
+        title,
+        source,
+        author,
+        cover,
+        noteCount,
+        readingDate,
+        hasSummary,
+        readerUrl,
+        link,
+      });
+    }
+
+    notes.sort((a, b) => b.readingDate.localeCompare(a.readingDate));
+
+    const todayStr = new Date().toISOString().slice(0, 10);
+    let md = `---
+doc_type: bookshelf-index
+type: index
+title: Qiaomu RSS 读书架
+total_articles: ${notes.length}
+total_highlights: ${totalHighlights}
+total_summaries: ${totalSummaries}
+created: 2026-09-19
+updated: ${todayStr}
+tags:
+  - 读书架
+  - 知识库索引
+  - 乔木RSS
+---
+
+# 📚 乔木 RSS 读书架与检索中心
+
+> [!note] 欢迎来到你的个人知识沉淀书架！
+> 这里集中汇聚了你在 **乔木 AI RSS（Qiaomu RSS）** 中研读的所有优质深度文章、高亮精句与思考批注。所有笔记均对齐 **微信读书架（WeRead）** 属性结构与元数据卡片标准，无缝支持 Obsidian 属性面板、实时预览（Live Preview）、全局搜索、以及 Dataview / Bases 视图检索。
+
+---
+
+## 📊 研读统计看板
+
+> [!abstract] **阅读沉淀总览**
+> - 📖 **已研读文章**：\`${notes.length}\` 篇
+> - ✍️ **累计划线与想法**：\`${totalHighlights}\` 条
+> - 🤖 **AI 深度总结**：\`${totalSummaries}\` 篇
+> - 🏛️ **订阅来源专栏**：\`${sourcesSet.size}\` 个
+
+---
+
+## 🔍 全量研读检索大表
+
+可直接使用 \`Ctrl / Cmd + F\` 全文检索关键词、作者、公众号或划线数量。点击文章标题即可直接翻阅笔记。
+
+| 封面 | 文章笔记与标题 | 来源 / 公众号 | 划线数 | AI 总结 | 研读日期 | 快捷跳转 |
+| :---: | :--- | :--- | :---: | :---: | :---: | :---: |
+`;
+
+    for (const n of notes) {
+      const coverMd = n.cover ? `![\\|55](${n.cover})` : '📄';
+      const noteLink = `[[${n.file.path}|${n.title.replace(/\|/g, '｜')}]]`;
+      const aiBadge = n.hasSummary ? '🤖 已提炼' : '—';
+      const jumpLinks: string[] = [];
+      jumpLinks.push(`[📖 阅读器](${n.readerUrl})`);
+      if (n.link) jumpLinks.push(`[🔗 原文](${n.link})`);
+      const jumpStr = jumpLinks.join(' · ');
+
+      md += `| ${coverMd} | ${noteLink} | \`${n.source}\` | **${n.noteCount}** | ${aiBadge} | \`${n.readingDate}\` | ${jumpStr} |\n`;
+    }
+
+    md += `\n---\n\n## 💡 Dataview 动态实时查询\n\n\`\`\`dataview\nTABLE WITHOUT ID\n  file.link as "文章",\n  source as "来源",\n  noteCount as "划线数",\n  readingDate as "研读日期"\nFROM "${noteFolder}"\nWHERE doc_type = "weread-highlights-reviews" or type = "reading-note"\nSORT file.mtime DESC\n\`\`\`\n`;
+
+    const indexPath = 'Qiaomu RSS 读书架.md';
+    const existing = this.app.vault.getAbstractFileByPath(indexPath);
+    if (existing instanceof TFile) {
+      await this.app.vault.modify(existing, md);
+    } else {
+      await this.app.vault.create(indexPath, md);
+    }
   }
   async saveOpml(content: string): Promise<string> {
     const folder = folderPath(this.state.settings.folder); let current = '';
