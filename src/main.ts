@@ -102,6 +102,11 @@ export default class QiaomuRssPlugin extends Plugin {
         return false;
       },
     });
+    this.addCommand({
+      id: 'update-bookshelf-index',
+      name: '更新乔木 RSS 读书架与读书笔记',
+      callback: () => void this.syncAllNotesAndBookshelf(),
+    });
     this.addSettingTab(new RssSettings(this.app, this));
     this.registerEvent(this.app.workspace.on('file-open', file => { if (file?.extension === 'md') this.cleanNoteMarkers(file); }));
     this.app.workspace.onLayoutReady(() => {
@@ -353,8 +358,10 @@ export default class QiaomuRssPlugin extends Plugin {
   async exportArticleNotes(entry: Entry, highlights: import('./model').Highlight[]): Promise<TFile> {
     const baseFolder = this.state.settings.noteFolder || `${folderPath(this.state.settings.folder)}/notes`;
     const sourceName = this.articleSourceName(entry);
-    const sanitizedTitle = sanitizeFilename(entry.titleZh || entry.title);
-    const filename = `${sanitizedTitle} - 读书笔记.md`;
+    const title = entry.titleZh || entry.title;
+    const sanitizedTitle = sanitizeFilename(title);
+    const dateStr = new Date().toISOString().slice(0, 10);
+    const filename = `${dateStr} - ${sanitizedTitle}.md`;
 
     let subfolder = '';
     const hierarchy = this.state.settings.noteHierarchy;
@@ -366,48 +373,61 @@ export default class QiaomuRssPlugin extends Plugin {
     const fullPath = [baseFolder, subfolder, filename].filter(Boolean).join('/');
     await this.ensureFolder(fullPath);
 
-    const dateStr = new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' });
-    const timeStr = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+    const vaultName = this.app.vault.getName();
+    const readerUrl = `obsidian://qiaomu-ai-rss?vault=${encodeURIComponent(vaultName)}&article=${encodeURIComponent(entry.id.startsWith('local-') ? 'local|' + entry.id : entry.id)}&mode=original`;
+    const coverUrl = entry.image || '';
+    const reviewCount = highlights.filter(h => h.note && h.note.trim()).length;
 
     let md = `---
-title: "${(entry.titleZh || entry.title).replace(/"/g, '\\"')}"
-source: "${(entry.sourceName || '').replace(/"/g, '\\"')}"
+doc_type: weread-highlights-reviews
+type: reading-note
+articleId: "${entry.id}"
+title: "${title.replace(/"/g, '\\"')}"
+author: "${(entry.author || sourceName).replace(/"/g, '\\"')}"
+source: "${sourceName.replace(/"/g, '\\"')}"
+cover: "${coverUrl}"
+reviewCount: ${reviewCount}
+noteCount: ${highlights.length}
+readingStatus: "4"
+progress: 100%
+readingDate: ${dateStr}
+lastReadDate: ${dateStr}
 link: "${entry.link || ''}"
-date: "${dateStr} ${timeStr}"
-type: 读书笔记
 tags:
   - 读书笔记
   - 乔木RSS
+  - ${sourceName}
 ---
 
-# ${entry.titleZh || entry.title}
-
-> **来源**：${entry.sourceName || 'RSS'}  
-> **原文链接**：[阅读原文](${entry.link || '#'})  
-> **导出时间**：${dateStr} ${timeStr}  
-> **划线与笔记数**：${highlights.length} 条
-
----
+# 元数据
+> [!abstract] ${title}
+${coverUrl ? `> - ![${title}|200](${coverUrl})\n` : ''}> - **文章标题**： ${title}
+> - **来源/专栏**： ${sourceName}
+> - **作者**： ${entry.author || sourceName}
+> - **划线与笔记**： ${highlights.length} 条
+> - **研读日期**： ${dateStr}
+> - **原文链接**： [打开原文链接](${entry.link || '#'})
+> - **阅读器直达**： [在乔木阅读器中打开](${readerUrl})
 
 `;
 
-    if (entry.aiSummary) {
-      md += `## AI 深度洞察与总结\n\n${entry.aiSummary}\n\n---\n\n`;
+    if (entry.aiSummary && entry.aiSummary.trim()) {
+      md += `# AI 深度洞察与总结\n\n${entry.aiSummary.trim()}\n\n---\n\n`;
     }
 
-    md += `## 划线与批注\n\n`;
+    md += `# 高亮划线与批注\n\n`;
 
     for (let i = 0; i < highlights.length; i++) {
       const hl = highlights[i];
-      const styleLabel = hl.style === 'underline' ? '划线' : hl.style === 'bold' ? '重点' : '高亮';
-      const time = hl.createdAt ? new Date(hl.createdAt).toLocaleDateString('zh-CN') : dateStr;
+      const styleIcon = hl.style === 'underline' ? '〰️' : hl.style === 'bold' ? '⚡' : '📌';
+      const time = hl.createdAt ? new Date(hl.createdAt).toLocaleString('zh-CN') : dateStr;
 
-      md += `### ${i + 1}. [${styleLabel}] (${time})\n\n`;
-      md += `> ${hl.text.replace(/\n+/g, '\n> ')}\n\n`;
+      md += `> ${styleIcon} [${hl.text.replace(/\n+/g, '\n> ')}](<${readerUrl}>)\n`;
+      md += `> ⏱ ${time} ^${hl.id || ('hl-' + i)}\n`;
       if (hl.note && hl.note.trim()) {
-        md += `💭 **我的想法**：\n\n${hl.note.trim()}\n\n`;
+        md += `> 💭 **我的想法**：${hl.note.trim()}\n`;
       }
-      md += `---\n\n`;
+      md += `\n`;
     }
 
     let existing = this.app.vault.getAbstractFileByPath(fullPath);
@@ -417,6 +437,37 @@ tags:
     } else {
       return await this.app.vault.create(fullPath, md);
     }
+  }
+
+  async syncAllNotesAndBookshelf(): Promise<void> {
+    const hlKeys = Object.keys(this.state.highlights || {});
+    if (hlKeys.length === 0) {
+      new Notice('暂无可同步的划线与笔记。');
+      return;
+    }
+    let count = 0;
+    for (const id of hlKeys) {
+      const hls = this.state.highlights[id];
+      if (!hls || hls.length === 0) continue;
+      const bundle = this.state.savedArticles[id] || (this.state.cache as Record<string, any>)[id];
+      let entry: Entry | undefined = bundle?.entry || bundle;
+      if (!entry?.title) {
+        entry = this.state.entries.find(e => e.id === id || e.link === id || id.includes(e.id));
+      }
+      if (!entry?.title) {
+        for (const sub of this.state.subscriptions) {
+          if (sub.entries) {
+            const found = sub.entries.find(e => e.id === id || e.link === id || id.includes(e.id));
+            if (found) { entry = found; break; }
+          }
+        }
+      }
+      if (entry && entry.title) {
+        await this.exportArticleNotes(entry, hls);
+        count++;
+      }
+    }
+    new Notice(`已更新 ${count} 篇读书笔记到本地目录！`);
   }
   async saveOpml(content: string): Promise<string> {
     const folder = folderPath(this.state.settings.folder); let current = '';
