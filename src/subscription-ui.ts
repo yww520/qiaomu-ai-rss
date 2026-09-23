@@ -104,6 +104,27 @@ export class SubscriptionManager extends Modal {
       attr: { style: 'flex: 1;' },
     });
     const searchBtn = form.createEl('button', { text: '搜索', type: 'submit', cls: 'mod-cta' });
+
+    const quickTools = container.createDiv({ cls: 'qrs-subscription-tools', attr: { style: 'margin-top: 10px; margin-bottom: 8px;' } });
+    const addAllBtn = quickTools.createEl('button', { text: '订阅公众号全量汇总源 (All-in-One)' });
+    addAllBtn.onclick = async () => {
+      const allFeedUrl = `${settings.weMpServerUrl.replace(/\/$/, '')}/feed/all.xml`;
+      await this.plugin.subscriptions.add(allFeedUrl, '微信公众号', this.contentEl.ownerDocument);
+      new Notice('已添加微信公众号全量汇总源');
+      this.body.empty();
+      this.renderWechat();
+      this.changed();
+    };
+
+    const importArticleBtn = quickTools.createEl('button', { text: '导入单篇微信文章链接…' });
+    importArticleBtn.onclick = () => {
+      new ImportWechatArticleModal(this.plugin, client, () => {
+        this.body.empty();
+        this.renderWechat();
+        this.changed();
+      }).open();
+    };
+
     const resultBox = container.createDiv({ cls: 'qrs-wechat-results' });
 
     // Show currently synced WeChat subscriptions
@@ -141,26 +162,6 @@ export class SubscriptionManager extends Modal {
         remove.onclick = () => new RemoveSubscription(this.plugin, feed, () => { this.body.empty(); this.renderWechat(); this.changed(); }).open();
       }
     }
-
-    const quickTools = container.createDiv({ cls: 'qrs-subscription-tools', attr: { style: 'margin-top: 14px; margin-bottom: 8px;' } });
-    const addAllBtn = quickTools.createEl('button', { text: '订阅公众号全量汇总源 (All-in-One)' });
-    addAllBtn.onclick = async () => {
-      const allFeedUrl = `${settings.weMpServerUrl.replace(/\/$/, '')}/feed/all.xml`;
-      await this.plugin.subscriptions.add(allFeedUrl, '微信公众号', this.contentEl.ownerDocument);
-      new Notice('已添加微信公众号全量汇总源');
-      this.body.empty();
-      this.renderWechat();
-      this.changed();
-    };
-
-    const importArticleBtn = quickTools.createEl('button', { text: '导入单篇微信文章链接…' });
-    importArticleBtn.onclick = () => {
-      new ImportWechatArticleModal(this.plugin, client, () => {
-        this.body.empty();
-        this.renderWechat();
-        this.changed();
-      }).open();
-    };
 
 
     form.onsubmit = async (e) => {
