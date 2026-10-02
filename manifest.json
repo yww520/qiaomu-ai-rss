@@ -1,7 +1,7 @@
 {
   "id": "qiaomu-ai-rss",
   "name": "Qiaomu RSS Plus (乔木 RSS 增强版)",
-  "version": "0.18.2",
+  "version": "0.18.3",
   "minAppVersion": "1.13.0",
   "description": "微信公众号双轨订阅、无字数截断、本地防盗链图床、Notion大纲与行间高亮批注，打造「读-记-存-用」闭环的乔木 RSS 增强版。",
   "author": "向阳乔木 / enhanced by YanG",

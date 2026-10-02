@@ -1,4 +1,4 @@
-### 🚀 Qiaomu RSS Plus (乔木 RSS 增强版) v0.18.2
+### 🚀 Qiaomu RSS Plus (乔木 RSS 增强版) v0.18.3
 
 本版本为 **Qiaomu RSS Plus** 的首个正式发布版本，支持 Obsidian BRAT 自动安装与手动离线安装。
 
@@ -19,6 +19,6 @@
 3. 点击添加后，BRAT 将自动下载并启用插件。
 
 ##### 方式二：手动离线安装
-1. 在本 Release 附件中下载 `main.js`、`manifest.json`、`styles.css`（或直接下载预打包的 `qiaomu-ai-rss-0.18.2.zip`）；
+1. 在本 Release 附件中下载 `main.js`、`manifest.json`、`styles.css`（或直接下载预打包的 `qiaomu-ai-rss-0.18.3.zip`）；
 2. 将文件放入您的 Obsidian 仓库路径：`.obsidian/plugins/qiaomu-ai-rss/`；
 3. 打开 Obsidian 设置 → **第三方插件**，点击刷新并启用 **Qiaomu RSS Plus (乔木 RSS 增强版)**。
