@@ -58,7 +58,17 @@ export default class QiaomuRssPlugin extends Plugin {
     const data: unknown = await this.loadData();
     try {
       this.state = initialState(data);
+      if (this.state.settings.weMpServerUrl.includes('43.156.114.156:8001')) {
+        this.state.settings.weMpServerUrl = 'http://127.0.0.1:8001';
+      }
+      const currentWeMp = this.state.settings.weMpServerUrl || 'http://127.0.0.1:8001';
       for (const sub of this.state.subscriptions) {
+        if (sub.url.includes('43.156.114.156:8001')) {
+          sub.url = sub.url.replace('http://43.156.114.156:8001', currentWeMp);
+          if (sub.error && sub.error.includes('502')) {
+            sub.error = '';
+          }
+        }
         sub.entries = deduplicateEntriesList(sub.entries, this.state.deletedIds);
       }
       this.state.entries = deduplicateEntriesList(this.state.entries, this.state.deletedIds);

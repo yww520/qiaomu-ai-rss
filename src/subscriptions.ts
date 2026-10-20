@@ -11,7 +11,14 @@ export class Subscriptions {
     transport?: FeedTransport,
     private wempUpdater?: (mpId: string, name?: string) => Promise<unknown>,
   ) {
-    this.transport = transport ?? (url => requestUrl({ url, method: 'GET', throw: false }));
+    this.transport = transport ?? ((url: string) => {
+      let targetUrl = url;
+      if (targetUrl.includes('43.156.114.156:8001')) {
+        const replacement = this.state().settings.weMpServerUrl || 'http://127.0.0.1:8001';
+        targetUrl = targetUrl.replace('http://43.156.114.156:8001', replacement);
+      }
+      return requestUrl({ url: targetUrl, method: 'GET', throw: false });
+    });
   }
   private async fetch(url: string, doc: Document) {
     const maxRetries = 2;
