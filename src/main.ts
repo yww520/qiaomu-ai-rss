@@ -55,7 +55,20 @@ export default class QiaomuRssPlugin extends Plugin {
         }
       })
     );
-    const data: unknown = await this.loadData();
+    let data: unknown = await this.loadData();
+    if (data && typeof data === 'object' && 'libraryVersion' in data) {
+      try {
+        const backupPath = `${this.app.vault.configDir}/plugins/${this.manifest.id}/data-before-library-v1.json`;
+        if (await this.app.vault.adapter.exists(backupPath)) {
+          const backupStr = await this.app.vault.adapter.read(backupPath);
+          data = JSON.parse(backupStr);
+          await this.saveData(data);
+          new Notice('已自动从升级前备份还原完整数据与正文。');
+        }
+      } catch (err) {
+        console.error('Failed to auto-restore data from data-before-library-v1.json', err);
+      }
+    }
     try {
       this.state = initialState(data);
       if (this.state.settings.weMpServerUrl.includes('43.156.114.156:8001')) {
