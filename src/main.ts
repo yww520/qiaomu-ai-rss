@@ -56,9 +56,24 @@ export default class QiaomuRssPlugin extends Plugin {
       })
     );
     let data: unknown = await this.loadData();
+    if (!data || (typeof data === 'object' && Object.keys(data).length === 0)) {
+      try {
+        const oldDataPath = `${this.app.vault.configDir}/plugins/qiaomu-ai-rss/data.json`;
+        if (await this.app.vault.adapter.exists(oldDataPath)) {
+          const oldStr = await this.app.vault.adapter.read(oldDataPath);
+          data = JSON.parse(oldStr);
+          await this.saveData(data);
+        }
+      } catch (err) {
+        console.error('Failed to auto-migrate data from qiaomu-ai-rss', err);
+      }
+    }
     if (data && typeof data === 'object' && 'libraryVersion' in data) {
       try {
-        const backupPath = `${this.app.vault.configDir}/plugins/${this.manifest.id}/data-before-library-v1.json`;
+        let backupPath = `${this.app.vault.configDir}/plugins/${this.manifest.id}/data-before-library-v1.json`;
+        if (!(await this.app.vault.adapter.exists(backupPath))) {
+          backupPath = `${this.app.vault.configDir}/plugins/qiaomu-ai-rss/data-before-library-v1.json`;
+        }
         if (await this.app.vault.adapter.exists(backupPath)) {
           const backupStr = await this.app.vault.adapter.read(backupPath);
           data = JSON.parse(backupStr);
@@ -138,7 +153,7 @@ export default class QiaomuRssPlugin extends Plugin {
       }
     });
     this.registerMarkdownPostProcessor(element => {
-      for (const link of element.querySelectorAll<HTMLAnchorElement>('a[href^="obsidian://qiaomu-ai-rss?"]')) {
+      for (const link of element.querySelectorAll<HTMLAnchorElement>('a[href^="obsidian://qiaomu-ai-rss?"], a[href^="obsidian://qiaomu-rss-plus?"]')) {
         link.setAttribute('href', repairArticleLinks(link.getAttribute('href') || ''));
       }
     });
@@ -153,12 +168,12 @@ export default class QiaomuRssPlugin extends Plugin {
         const cm = EditorView.findFromDOM(editorLink);
         if (cm) {
           const position = cm.posAtDOM(editorLink), line = cm.state.doc.lineAt(position);
-          for (const match of line.text.matchAll(/\[[^\n]*?\]\(<(obsidian:\/\/qiaomu-ai-rss\?[^>]+)>\)/g)) {
+          for (const match of line.text.matchAll(/\[[^\n]*?\]\(<(obsidian:\/\/(?:qiaomu-ai-rss|qiaomu-rss-plus)\?[^>]+)>\)/g)) {
             if (position >= line.from + match.index && position <= line.from + match.index + match[0].length) { href = match[1]; break; }
           }
         }
       }
-      if (!href?.startsWith('obsidian://qiaomu-ai-rss?')) return;
+      if (!href?.startsWith('obsidian://qiaomu-ai-rss?') && !href?.startsWith('obsidian://qiaomu-rss-plus?')) return;
       const url = new URL(repairArticleLinks(href));
       if (url.searchParams.get('vault') !== this.app.vault.getName()) return;
       event.preventDefault(); event.stopImmediatePropagation();
@@ -167,7 +182,7 @@ export default class QiaomuRssPlugin extends Plugin {
     }, { capture: true });
     registerLinks(document);
     this.registerEvent(this.app.workspace.on('window-open', (_window, win) => registerLinks(win.document)));
-    this.registerObsidianProtocolHandler('qiaomu-ai-rss', params => {
+    const handleProtocol = (params: Record<string, string>) => {
       if (params.action === 'update-bookshelf') {
         void this.syncAllNotesAndBookshelf().then(() => {
           const file = this.app.vault.getAbstractFileByPath('Qiaomu RSS 读书架.md');
@@ -189,7 +204,9 @@ export default class QiaomuRssPlugin extends Plugin {
         }
       }
       void this.openSavedArticle(params.article || '', params.mode || 'original').catch(() => new Notice('这篇文章的本地副本不存在。'));
-    });
+    };
+    this.registerObsidianProtocolHandler('qiaomu-ai-rss', handleProtocol);
+    this.registerObsidianProtocolHandler('qiaomu-rss-plus', handleProtocol);
   }
   onunload() { this.fonts.dispose(); }
   api(): RssApi {

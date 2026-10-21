@@ -625,6 +625,7 @@
 .is-mobile .qrs-selection-popup button { width:44px; height:44px; }
 
 /* The reader provides its own compact navigation and actions. */
+.workspace-leaf-content[data-type="qiaomu-rss-plus-reader"] > .view-header,
 .workspace-leaf-content[data-type="qiaomu-ai-rss-reader"] > .view-header { display: none; }
 
 .qrs-filters .qrs-settings-button { margin-left:auto; }

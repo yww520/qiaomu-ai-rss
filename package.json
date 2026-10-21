@@ -1,6 +1,6 @@
 {
   "name": "qiaomu-rss-plus",
-  "version": "0.18.3",
+  "version": "1.0.0",
   "description": "Qiaomu RSS Plus: WeChat dual-track subscription, unlimited length, local image vault, Notion-style outline, inline annotations & PKM closed loop for Obsidian.",
   "license": "GPL-3.0-only",
   "private": true,
