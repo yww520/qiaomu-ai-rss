@@ -730,8 +730,10 @@ export class ImportWechatArticleModal extends Modal {
           if (addedEntry) {
             const locationTip = matchedSubName ? `已自动归类至「${matchedSubName}」及「精选文章」` : '已归入「精选文章」';
             new Notice(`🎉「${addedEntry.title}」导入成功！${locationTip}`, 7000);
+          } else if (res.title) {
+            new Notice(`🎉「${res.title}」云端提取成功！已加入「精选文章」`, 7000);
           } else {
-            new Notice(res.title ? `🎉「${res.title}」云端提取成功！订阅源更新可能有数秒延迟，若列表中未显示请点击顶部「刷新文章」查看。` : '文章已提取成功！订阅源生成可能有数秒延迟，若未显示请点击顶部「刷新文章」查看。', 8000);
+            new Notice('已提交抓取任务，若列表中未显示请稍后刷新「精选文章」查看。', 7000);
           }
           this.close();
           this.onSuccess();

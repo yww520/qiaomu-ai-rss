@@ -422,9 +422,9 @@ export class WeMpClient {
         return { ok: true, message: '文章已加入抓取队列', feedUrl };
       }
 
-      // Poll task status until complete or timeout (up to 30s)
+      // Poll task status until complete or timeout (up to 40s to allow backend Playwright locator timeout to resolve)
       const start = Date.now();
-      while (Date.now() - start < 30000) {
+      while (Date.now() - start < 40000) {
         await new Promise((r) => window.setTimeout(r, 1500));
         try {
           const pollRes = await requestUrl({
@@ -444,9 +444,13 @@ export class WeMpClient {
               };
             }
             if (taskData?.status === 'failed') {
+              let errMsg = taskData.message || '文章抓取失败';
+              if (errMsg.includes('Timeout') && errMsg.includes('og:title')) {
+                errMsg = '微信页面未加载出文章标题，页面可能提示「参数错误」或已被发布者删除';
+              }
               return {
                 ok: false,
-                message: taskData.message || '文章抓取失败',
+                message: errMsg,
                 feedUrl,
               };
             }
@@ -457,8 +461,8 @@ export class WeMpClient {
       }
 
       return {
-        ok: true,
-        message: '任务在后台执行中，请稍后刷新查看',
+        ok: false,
+        message: '云端提取超时：未能成功解析文章，请检查链接是否为有效公开的微信文章',
         feedUrl,
       };
     } catch (e) {
